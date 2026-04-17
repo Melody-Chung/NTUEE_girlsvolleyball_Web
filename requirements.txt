@@ -1,0 +1,6 @@
+Flask
+python-dotenv
+supabase
+requests
+beautifulsoup4
+Werkzeug

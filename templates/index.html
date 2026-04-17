@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volleyball Team Management System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+    <div id="login-overlay" class="login-screen" style="display: none;">
+        
+        <div class="login-card" id="login-form-container">
+            <h3>Team Login</h3>
+            <input type="text" id="username" placeholder="Your Name">
+            
+            <div class="password-wrapper">
+                <input type="password" id="login-password" placeholder="Enter Password">
+                <span class="toggle-password" onclick="togglePasswordVisibility('login-password', this)">
+                    <i class="fas fa-eye-slash"></i>
+                </span>
+            </div>
+            
+            <button class="primary-btn full-width" onclick="handleLogin()">Login</button>
+            <p id="login-error" style="color: #ff4757; display: none; margin-top: 15px;">Invalid password or pending!</p>
+            
+            <div style="margin-top: 20px; font-size: 0.9rem;">
+                <span style="color: #666;">New to the team? </span>
+                <a href="#" onclick="toggleAuthMode('register')" style="color: var(--accent-color); font-weight: 600; text-decoration: none;">Register here</a>
+            </div>
+            <button onclick="closeLogin()" class="close-btn">Cancel</button>
+        </div>
+
+        <div class="login-card" id="register-form-container" style="display: none;">
+            <h3>Create Account</h3>
+            <input type="text" id="reg-username" placeholder="Your Name">
+            
+            <select id="reg-role">
+                <option value="member">Team Member</option>
+                <option value="captain">Captain</option>
+            </select>
+            
+            <div class="password-wrapper">
+                <input type="password" id="reg-password" placeholder="Create Password">
+                <span class="toggle-password" onclick="togglePasswordVisibility('reg-password', this)">
+                    <i class="fas fa-eye-slash"></i>
+                </span>
+            </div>
+            
+            <button class="primary-btn full-width" onclick="handleRegister()">Sign Up</button>
+            <p id="reg-message" style="margin-top: 15px; font-weight: 500;"></p>
+            
+            <div style="margin-top: 20px; font-size: 0.9rem;">
+                <span style="color: #666;">Already have an account? </span>
+                <a href="#" onclick="toggleAuthMode('login')" style="color: var(--accent-color); font-weight: 600; text-decoration: none;">Login here</a>
+            </div>
+            <button onclick="closeLogin()" class="close-btn">Cancel</button>
+        </div>
+
+    </div>
+
+    <div class="app-container" id="main-app" style="display: flex;">
+        <nav class="sidebar">
+            <ul class="menu-list">
+                <li onclick="showSection('home')" class="active">Home Overview</li>
+                <li onclick="showSection('schedule')">Court Status</li>
+                <li onclick="showSection('strategy')" class="captain-only auth-only">Probability & Strategy</li>
+                <li onclick="showSection('menu')" class="auth-only">Training Menu</li>
+                <li onclick="showSection('videos')" class="auth-only">Match Analysis & Videos</li> 
+                <li onclick="showSection('approval')" class="captain-only auth-only">Account Approvals</li>
+            </ul>
+        </nav>
+
+        <main class="main-content">
+            <header class="top-bar">
+                <div class="sidebar-toggle" onclick="toggleSidebar()">
+                    <i class="fas fa-bars"></i>
+                </div>
+                <h1 id="app-title">台大電機女排</h1>
+                <div class="user-profile">
+                    <div id="guest-zone">
+
+                        <button onclick="openLogin()" class="primary-btn-sm">Login</button>
+
+                    </div>
+
+                    
+
+                    <div id="user-zone" style="display: none; align-items: center; gap: 12px;">
+                        <span id="display-role" class="role-badge"></span>
+                        <div class="avatar-dropdown-container">
+                            <div class="avatar circle-orange" onclick="toggleAvatarMenu(event)">
+                                <span id="display-avatar">?</span>
+                            </div>
+                            <div class="avatar-dropdown-menu" id="avatarMenu">
+                                <button class="dropdown-item" onclick="openChangePassword()">Change Password</button>
+                                <button class="dropdown-item logout-action" onclick="handleLogout()">Log out</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                
+                <div id="home" class="content-section">
+                    <div class="showcase-slider-container" id="showcase-slider-container" style="display: none;">
+                        </div>
+                    <div class="announcement-card card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3 style="margin:0;">公告</h3>
+                            <button class="primary-btn-sm captain-only auth-only" onclick="openEditAnnouncement()" style="padding: 4px 12px; font-size: 0.85rem;">Edit</button>
+                        </div>
+                        <div id="announcement-content">
+                            <p style="color:#999;">Loading announcements...</p>
+                        </div>
+                    </div>
+                    
+                    <div class="section-header-row">
+                        <h3 class="section-title" style="margin-bottom: 0;">Team Gallery</h3>
+                        <div class="upload-area auth-only">
+                            <span class="upload-hint">Supports JPG, PNG</span>
+                            
+                            <input type="file" id="photo-upload" accept="image/*" multiple style="display: none;" onchange="updateFileCount(this)">
+                            
+                            <label for="photo-upload" class="secondary-btn-sm">
+                                <i class="fas fa-folder-open"></i> 選擇檔案
+                            </label>
+                            
+                            <span id="file-chosen-text" class="file-status">尚未選擇檔案</span>
+                            
+                            <button class="primary-btn-sm" onclick="uploadPhotos()">
+                                <i class="fas fa-cloud-upload-alt"></i> Upload
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="photo-gallery">
+                    </div>
+                </div>
+
+                <div id="schedule" class="content-section" style="display:none;">
+                    <h3 class="section-title">Court Status</h3>   
+                    
+                    <div class="card auth-only captain-only" style="background: white; padding: 20px 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px; border-top: 4px solid var(--accent-color); display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;">
+
+                        <h4 style="margin: 0; color: #2c3e50; font-size: 1.15rem; display: flex; align-items: center; gap: 8px; margin-right: 15px; align-self: center;">
+                            <i class="fas fa-sliders-h" style="color: #7f8c8d;"></i> Scraper Control Panel
+                        </h4>
+
+                        <div style="width: 1px; height: 60px; background: #ccc; margin: 0 60px;"></div>
+
+                        <div style="display: flex; flex-direction: column; gap: 5px;">
+                            <label for="config-start" style="font-size: 0.8rem; font-weight: bold; color: #666;">Start Date</label>
+                            <input type="date" id="config-start" style="padding: 8px; border: 1px solid #ccc; border-radius: 6px; width: 135px; color: #333;">
+                        </div>
+
+                        <div style="display: flex; flex-direction: column; gap: 5px;">
+                            <label for="config-end" style="font-size: 0.8rem; font-weight: bold; color: #666;">End Date</label>
+                            <input type="date" id="config-end" style="padding: 8px; border: 1px solid #ccc; border-radius: 6px; width: 135px; color: #333;">
+                        </div>
+
+                        <button class="court-btn" onclick="scrapeThisMonth()" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #f4f6f7; color: #2980b9; border: 1px solid #bdc3c7; padding: 0 15px; border-radius: 6px; height: 40px; font-weight: bold;">
+                            <i class="fas fa-calendar-day"></i> 這個月
+                        </button>
+
+                        <button class="court-btn" onclick="scrapeNextMonth()" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin-right: auto; background: #f4f6f7; color: #2980b9; border: 1px solid #bdc3c7; padding: 0 15px; border-radius: 6px; height: 40px; font-weight: bold;">
+                            <i class="fas fa-calendar-day"></i> 下個月
+                        </button>
+                        
+                        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; white-space: nowrap;">
+                        <div style="display: flex; align-items: center; gap: 6px; height: 36px; padding-left: 5px;">
+                            <input type="checkbox" id="config-ignore-res" checked style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent-color);">
+                            <label for="config-ignore-res" style="font-size: 0.95rem; font-weight: bold; color: #555; cursor: pointer; margin: 0;">不考慮預約場地</label>
+                        </div>
+
+                        <button class="court-btn" onclick="executeScraper(this)" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #e67e22; color: white; border: none; padding: 0 24px; border-radius: 8px; height: 40px; font-weight: bold; letter-spacing: 1px; box-shadow: 0 4px 10px rgba(230, 126, 34, 0.3);">
+                            <i class="fas fa-spider"></i><span class="scraper-btn-label">執行爬蟲</span>
+                        </button>
+                        <button class="court-btn" id="edit-table-btn" onclick="toggleEditMode()" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #f4f6f7; color: #2980b9; border: 1px solid #bdc3c7; padding: 0 15px; border-radius: 6px; height: 40px; font-weight: bold; cursor: pointer;">
+                            <i class="fas fa-edit"></i> 編輯表格
+                        </button>
+
+                        </div>
+                        <div style="flex-basis: 100%; margin-top: 10px; padding: 5px 10px; color: #95a5a6; font-size: 0.8rem; line-height: 1.5; display: flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-info-circle" style="opacity: 0.7;"></i>
+                            <span>
+                                提醒：如果系統爬蟲回傳「拒絕存取」，請先登入<a href="https://rent.pe.ntu.edu.tw/member/?U=login" target="_blank" style="color: #7f8c8d; text-decoration: underline;">台大場地管理系統</a>，再回來重新爬一次。
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="court-weekday-filter" id="court-weekday-filter">
+                            <span class="court-weekday-filter__label">Weekdays</span>
+                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="1" checked> Mon</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="2" checked> Tue</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="3" checked> Wed</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="4" checked> Thu</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="5" checked> Fri</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="6" checked> Sat</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="0" checked> Sun</label>
+                        </div>
+
+                        <div class="tabs-container">
+                            <button class="tab-btn active" id="tab-current" onclick="switchCourtTab('current')">
+                                This Month (<span id="label-current-month"></span>)
+                            </button>
+                            <button class="tab-btn" id="tab-next" onclick="switchCourtTab('next')">
+                                Next Month (<span id="label-next-month"></span>)
+                            </button>
+                        </div>
+
+                        <div id="display-current" class="court-display-area" style="overflow-x: auto;"></div>
+                        <div id="display-next" class="court-display-area" style="display: none; overflow-x: auto;"></div>
+                    </div>
+                </div>
+
+                <div id="strategy" class="content-section" style="display:none;">
+                    <h3 class="section-title">Bids & Probability & Strategy</h3>
+
+                    <div class="card">
+                        <div class="strategy-panel-header">
+                            <div>
+                                <h4 class="strategy-panel-title">Bid Records</h4>
+                            </div>
+                        </div>
+
+                        <div class="strategy-filter-row">
+                            <div class="court-weekday-filter" id="lottery-weekday-filter">
+                                <span class="court-weekday-filter__label">Weekdays</span>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="0" checked> Mon</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="1" checked> Tue</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="2" checked> Wed</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="3" checked> Thu</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="4" checked> Fri</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="5" checked> Sat</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="6" checked> Sun</label>
+                            </div>
+                            <div class="strategy-month-controls">
+                                <label>
+                                    <span>Selected Month</span>
+                                    <input type="month" id="lottery-month-picker">
+                                </label>
+                                <button class="court-btn" onclick="loadSelectedLotteryMonth()">Load Month</button>
+                                <button class="court-btn" id="lottery-edit-btn" onclick="toggleLotteryEditMode()">
+                                    <i class="fas fa-edit"></i> Edit Bids
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="tabs-container">
+                            <button class="tab-btn active" id="lottery-tab-current" onclick="switchLotteryTab('current')">
+                                This Month (<span id="label-lottery-current-month"></span>)
+                            </button>
+                            <button class="tab-btn" id="lottery-tab-next" onclick="switchLotteryTab('next')">
+                                Next Month (<span id="label-lottery-next-month"></span>)
+                            </button>
+                            <button class="tab-btn" id="lottery-tab-selected" onclick="switchLotteryTab('selected')">
+                                Selected Month (<span id="label-lottery-selected-month"></span>)
+                            </button>
+                            <button class="tab-btn" id="lottery-tab-saved" onclick="switchLotteryTab('saved')">
+                                Saved Months
+                            </button>
+                        </div>
+
+                        <div id="lottery-display-current" class="court-display-area" style="overflow-x: auto;"></div>
+                        <div id="lottery-display-next" class="court-display-area" style="display: none; overflow-x: auto;"></div>
+                        <div id="lottery-display-selected" class="court-display-area" style="display: none; overflow-x: auto;"></div>
+                        <div id="lottery-display-saved" class="court-display-area" style="display: none; overflow-x: auto;"></div>
+                    </div>
+
+                    <div class="card">
+                        <div class="strategy-panel-header">
+                            <div>
+                                <h4 class="strategy-panel-title">Probability Analysis</h4>
+                            </div>
+                        </div>
+
+                        <div class="court-weekday-filter" id="probability-court-filter">
+                            <span class="court-weekday-filter__label">Courts</span>
+                            <label class="court-weekday-option"><input type="checkbox" data-probability-court="Court 4" checked> Court 4</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-probability-court="Court 5" checked> Court 5</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-probability-court="Court 6" checked> Court 6</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-probability-court="Court 7" checked> Court 7</label>
+                        </div>
+                        <div class="strategy-filter-row">
+                            <div class="court-weekday-filter" id="probability-weekday-filter">
+                                <span class="court-weekday-filter__label">Weekdays</span>
+                                <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="0" checked> Mon</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="1" checked> Tue</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="2" checked> Wed</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="3" checked> Thu</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="4" checked> Fri</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="5" checked> Sat</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="6" checked> Sun</label>
+                            </div>
+                            <div class="strategy-range-controls">
+                                <label>
+                                    <span>Start Month</span>
+                                    <input type="month" id="probability-start-month">
+                                </label>
+                                <label>
+                                    <span>End Month</span>
+                                    <input type="month" id="probability-end-month">
+                                </label>
+                                <button class="court-btn" onclick="refreshLotteryDashboard()">Refresh Analysis</button>
+                            </div>
+                        </div>
+
+                        <div class="tabs-container">
+                            <button class="tab-btn active" id="probability-tab-selected" onclick="switchProbabilityTab('selected')">Selected Range</button>
+                            <button class="tab-btn" id="probability-tab-all" onclick="switchProbabilityTab('all')">All History</button>
+                        </div>
+
+                        <div id="probability-summary" class="strategy-summary"></div>
+                        <div id="probability-selected-panel"></div>
+                        <div id="probability-all-panel" style="display: none;"></div>
+                    </div>
+
+                    <div class="card">
+                        <div class="strategy-panel-header">
+                            <div>
+                                <h4 class="strategy-panel-title">Strategy</h4>
+                            </div>
+                        </div>
+                        <div class="court-weekday-filter" id="strategy-court-filter">
+                            <span class="court-weekday-filter__label">Courts</span>
+                            <label class="court-weekday-option"><input type="checkbox" data-strategy-court="Court 4" checked> Court 4</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-strategy-court="Court 5" checked> Court 5</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-strategy-court="Court 6" checked> Court 6</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-strategy-court="Court 7" checked> Court 7</label>
+                        </div>
+                        <div class="strategy-filter-row">
+                            <div class="court-weekday-filter" id="strategy-weekday-filter">
+                                <span class="court-weekday-filter__label">Weekdays</span>
+                                <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="0"> Mon</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="1" checked> Tue</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="2"> Wed</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="3" checked> Thu</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="4"> Fri</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="5"> Sat</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="6"> Sun</label>
+                            </div>
+                            <div class="strategy-weight-controls">
+                                <label>
+                                    <span>20-22 Weight Ratio</span>
+                                    <input type="number" id="strategy-weight-ratio" min="0.1" max="5" step="0.1" value="1.3">
+                                </label>
+                                <button class="court-btn" onclick="refreshStrategyPanel()">Refresh Strategy</button>
+                                <button class="court-btn" onclick="downloadStrategyTableAsPng()">Download as PNG</button>
+                            </div>
+                        </div>
+                        <div class="tabs-container">
+                            <button class="tab-btn active" id="strategy-tab-selected" onclick="switchStrategyTab('selected')">Selected Range</button>
+                            <button class="tab-btn" id="strategy-tab-all" onclick="switchStrategyTab('all')">All History</button>
+                        </div>
+                        <div id="strategy-selected-panel"></div>
+                        <div id="strategy-all-panel" style="display: none;"></div>
+                    </div>
+                </div>
+
+                <div id="menu" class="content-section" style="display:none;">
+                    <div class="card menu-card captain-only auth-only">
+                        <button type="button" class="menu-editor-toggle" onclick="toggleMenuEditor()">
+                            <span>Edit Menu Database</span>
+                            <span id="menu-editor-toggle-icon">▾</span>
+                        </button>
+                        <div id="menu-editor-panel" class="menu-editor-panel" style="display:none;">
+                            <div class="video-control-block__header">
+                                <h4 style="margin: 0;">Edit Menu Database</h4>
+                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button type="button" class="court-btn" onclick="startCreateMenuItem()">New Drill</button>
+                                    <button type="button" class="court-btn" onclick="saveMenuItem()">Save Drill</button>
+                                </div>
+                            </div>
+                            <div class="menu-editor-layout">
+                                <div class="menu-editor-form">
+                                    <input type="hidden" id="menu-edit-id">
+                                    <label class="menu-inline-field">
+                                        <span>Drill Name</span>
+                                        <input type="text" id="menu-edit-name" placeholder="e.g. 接扣(一般)(左右)">
+                                    </label>
+                                    <label class="menu-inline-field">
+                                        <span>Players</span>
+                                        <input type="number" id="menu-edit-players" min="1" max="12" value="2">
+                                    </label>
+                                    <label class="menu-inline-field">
+                                        <span>Focus</span>
+                                        <input type="text" id="menu-edit-focuses" placeholder="下手, 反應, 扣球">
+                                    </label>
+                                    <label class="menu-inline-field">
+                                        <span>Court Mode</span>
+                                        <input type="text" id="menu-edit-court-modes" placeholder="有場, 沒場">
+                                    </label>
+                                    <label class="menu-inline-field">
+                                        <span>Complexity</span>
+                                        <input type="text" id="menu-edit-complexities" placeholder="拆分, 串接">
+                                    </label>
+                                    <label class="menu-inline-field">
+                                        <span>Fatigue</span>
+                                        <input type="text" id="menu-edit-fatigue" placeholder="輕鬆, 普通, 累">
+                                    </label>
+                                    <label class="menu-inline-field">
+                                        <span>Difficulty</span>
+                                        <input type="text" id="menu-edit-difficulty" placeholder="簡單, 困難">
+                                    </label>
+                                    <div class="menu-toolbar-actions" style="margin-left:0;">
+                                        <button type="button" class="court-btn" onclick="resetMenuEditor()">Clear</button>
+                                        <button type="button" class="court-btn" onclick="deleteMenuItem()">Delete</button>
+                                    </div>
+                                </div>
+                                <div class="menu-editor-list-wrap">
+                                    <div class="menu-filter-title">Current Drills</div>
+                                    <div id="menu-editor-list" class="menu-editor-list"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card menu-card">
+                        <div id="menu-practice-board"></div>
+                    </div>
+                    <div class="card menu-card captain-only auth-only">
+                        <div class="strategy-panel-header">
+                            <div>
+                                <h4 class="strategy-panel-title">Practice Days</h4>
+                            </div>
+                        </div>
+                        <div id="menu-practice-weekdays"></div>
+                    </div>
+                    <div class="card menu-card">
+                        <div class="strategy-panel-header">
+                            <div>
+                                <h4 class="strategy-panel-title">Drill Filters</h4>
+                            </div>
+                        </div>
+                        <div class="menu-toolbar">
+                            <label class="menu-inline-field">
+                                <span>Available Players</span>
+                                <input type="number" id="menu-players" min="1" max="12" value="6">
+                            </label>
+                            <label class="menu-inline-field">
+                                <span>Court</span>
+                                <select id="menu-court-mode">
+                                    <option value="">Any</option>
+                                    <option value="有場">Has Court</option>
+                                    <option value="沒場">No Court</option>
+                                </select>
+                            </label>
+                            <label class="menu-inline-field">
+                                <span>Plan Size</span>
+                                <select id="menu-plan-size">
+                                    <option value="4">4 Drills</option>
+                                    <option value="5" selected>5 Drills</option>
+                                    <option value="6">6 Drills</option>
+                                    <option value="8">8 Drills</option>
+                                </select>
+                            </label>
+                            <div class="menu-toolbar-actions">
+                                <button type="button" class="court-btn" onclick="showAllMenuMatches()">Show All Matches</button>
+                                <button type="button" class="court-btn" onclick="selectAllMenuFilters()">Select All</button>
+                                <button type="button" class="court-btn" onclick="resetMenuFilters()">Reset</button>
+                            </div>
+                        </div>
+                        <div class="menu-filter-sections">
+                            <div class="menu-filter-group">
+                                <div class="menu-filter-title">Training Focus</div>
+                                <div id="menu-focus-grid" class="checkbox-grid"></div>
+                            </div>
+                            <div class="menu-filter-group">
+                                <div class="menu-filter-title">Complexity</div>
+                                <div id="menu-complexity-grid" class="checkbox-grid menu-chip-grid"></div>
+                            </div>
+                            <div class="menu-filter-group">
+                                <div class="menu-filter-title">Fatigue</div>
+                                <div id="menu-fatigue-grid" class="checkbox-grid menu-chip-grid"></div>
+                            </div>
+                            <div class="menu-filter-group">
+                                <div class="menu-filter-title">Difficulty</div>
+                                <div id="menu-difficulty-grid" class="checkbox-grid menu-chip-grid"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card menu-card captain-only auth-only menu-builder-card">
+                        <div class="strategy-panel-header">
+                            <div>
+                                <h4 class="strategy-panel-title">Plan Builder</h4>
+                            </div>
+                        </div>
+                        <div class="menu-builder-layout">
+                            <div class="menu-builder-half">
+                                <div class="menu-builder-half__title">First Half</div>
+                                <div id="menu-first-half-zone" class="menu-drop-zone" ondragover="handlePracticeMenuDragOver(event)" ondrop="handlePracticeMenuDrop(event, 'first_half')"></div>
+                                <div class="menu-manual-add">
+                                    <input type="text" id="menu-first-half-manual" placeholder="Type a drill name...">
+                                    <button type="button" class="court-btn" onclick="addManualPracticeMenuItem('first_half')">Add</button>
+                                </div>
+                            </div>
+                            <div class="menu-builder-half">
+                                <div class="menu-builder-half__title">Second Half</div>
+                                <div id="menu-second-half-zone" class="menu-drop-zone" ondragover="handlePracticeMenuDragOver(event)" ondrop="handlePracticeMenuDrop(event, 'second_half')"></div>
+                                <div class="menu-manual-add">
+                                    <input type="text" id="menu-second-half-manual" placeholder="Type a drill name...">
+                                    <button type="button" class="court-btn" onclick="addManualPracticeMenuItem('second_half')">Add</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="menu-result" class="result-container"></div>
+                </div>
+
+                <div id="videos" class="content-section" style="display:none;">
+                    <h3 class="section-title">Match Analysis & Videos</h3>
+
+                    <div class="card video-control-card">
+                        <div class="video-control-grid">
+                            <div class="video-control-block">
+                                <div class="video-control-block__header">
+                                    <h4 style="margin: 0;">Create Match Section</h4>
+                                    <button class="primary-btn" onclick="createVideoSection()" style="padding: 6px 16px; font-size: 0.9em;">Create</button>
+                                </div>
+                                <input type="text" id="video-section-title" placeholder="e.g. 2026 DaDian Cup" class="video-control-input">
+                            </div>
+                            <div class="video-control-block">
+                                <div class="video-control-block__header">
+                                    <h4 style="margin: 0;">Add Video to Section</h4>
+                                    <button class="primary-btn" onclick="addVideo()" style="padding: 6px 16px; font-size: 0.9em;">Add</button>
+                                </div>
+                                <div class="video-add-grid">
+                                    <select id="video-section-select" class="video-control-input"></select>
+                                    <input type="text" id="video-title" placeholder="Custom video title" class="video-control-input">
+                                    <input type="text" id="video-url" placeholder="Paste YouTube link here..." class="video-control-input">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="video-sections-container" class="video-sections-container"></div>
+                </div>
+                
+                <div id="approval" class="content-section" style="display:none;">
+                    <h3 class="section-title">Team Management</h3>
+                    
+                    <div class="card" style="margin-bottom: 20px;">
+                        <h4 style="margin-bottom: 15px; color: var(--accent-color);">Pending Approvals</h4>
+                        <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Review and approve new team members to grant them access.</p>
+                        <div id="pending-users-container">
+                            <p style="text-align:center; color:#999; padding: 20px;">Loading pending requests...</p>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h4 style="margin-bottom: 15px; color: var(--primary-color);">Current Roster & Roles</h4>
+                        <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Manage roles (Promote to Captain or Demote to Member) for next semester's transition.</p>
+                        <div id="team-members-container">
+                            <p style="text-align:center; color:#999; padding: 20px;">Loading team members...</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+    
+    <div id="lightbox-overlay" class="lightbox" style="display: none;" onclick="closeLightbox()">
+        <span class="lightbox-close">&times;</span>
+        <img class="lightbox-content" id="lightbox-img">
+    </div>
+    <div id="showcase-crop-modal" class="lightbox showcase-crop-modal" style="display: none;">
+        <div class="showcase-crop-modal__dialog">
+            <div class="showcase-crop-modal__header">
+                <h3>Crop Showcase Image</h3>
+                <button type="button" class="showcase-crop-modal__close" onclick="closeShowcaseCropModal()">&times;</button>
+            </div>
+            <div class="showcase-crop-modal__stage-wrap">
+                <div class="showcase-crop-stage" id="showcase-crop-stage">
+                    <img id="showcase-crop-image" alt="Showcase crop preview">
+                    <div class="showcase-crop-guide showcase-crop-guide--modal" aria-hidden="true">
+                        <div class="showcase-crop-guide__mask showcase-crop-guide__mask--left"></div>
+                        <div class="showcase-crop-guide__mask showcase-crop-guide__mask--right"></div>
+                        <div class="showcase-crop-guide__safe">
+                            <span class="showcase-crop-guide__safe-label">Sidebar open safe area</span>
+                        </div>
+                        <span class="showcase-crop-guide__full-label">Sidebar closed safe area</span>
+                    </div>
+                </div>
+            </div>
+            <div class="showcase-crop-modal__controls">
+                <label>
+                    <span>Zoom</span>
+                    <input type="range" id="showcase-crop-zoom" min="1" max="3" step="0.01" value="1">
+                </label>
+            </div>
+            <div class="showcase-crop-nudge">
+                <span>Move</span>
+                <div class="showcase-crop-nudge__grid">
+                    <button type="button" class="showcase-crop-nudge__btn showcase-crop-nudge__btn--up" onclick="nudgeShowcaseCrop(0, -12)">↑</button>
+                    <button type="button" class="showcase-crop-nudge__btn showcase-crop-nudge__btn--left" onclick="nudgeShowcaseCrop(-12, 0)">←</button>
+                    <button type="button" class="showcase-crop-nudge__btn showcase-crop-nudge__btn--right" onclick="nudgeShowcaseCrop(12, 0)">→</button>
+                    <button type="button" class="showcase-crop-nudge__btn showcase-crop-nudge__btn--down" onclick="nudgeShowcaseCrop(0, 12)">↓</button>
+                </div>
+            </div>
+            <div class="showcase-crop-modal__actions">
+                <button type="button" class="court-btn" onclick="closeShowcaseCropModal()">Cancel</button>
+                <button type="button" class="court-btn" onclick="saveShowcaseCrop()">Save Crop</button>
+            </div>
+        </div>
+    </div>
+    <div id="video-notes-modal" class="lightbox video-notes-modal" style="display: none;">
+        <div class="video-notes-modal__dialog">
+            <div class="video-notes-modal__header">
+                <h3 id="video-notes-modal-title">Match Notes</h3>
+                <button type="button" class="video-notes-modal__close" onclick="closeVideoNotesModal()">&times;</button>
+            </div>
+            <div id="video-notes-list" class="video-notes-list"></div>
+            <div class="video-notes-modal__toolbar">
+                <button type="button" class="court-btn" onclick="addVideoNoteRow()">Add Match Note</button>
+            </div>
+            <div class="video-notes-modal__actions">
+                <button type="button" class="court-btn" onclick="closeVideoNotesModal()">Cancel</button>
+                <button type="button" class="court-btn" onclick="saveVideoNotes()">Save</button>
+            </div>
+        </div>
+    </div>
+    <div id="change-password-overlay" class="login-screen" style="display: none;">
+        <div class="login-card">
+            <h3>Change Password</h3>
+            <div class="password-wrapper">
+                <input type="password" id="old-password" placeholder="Current Password">
+            </div>
+            <div class="password-wrapper">
+                <input type="password" id="new-password" placeholder="New Password">
+            </div>
+            <button class="primary-btn full-width" onclick="submitChangePassword()">Update Password</button>
+            <p id="cp-message" style="margin-top: 15px; font-weight: 500;"></p>
+            <button onclick="closeChangePassword()" class="close-btn">Cancel</button>
+        </div>
+    </div>
+    <div id="edit-announcement-overlay" class="login-screen" style="display: none;">
+        <div class="login-card" style="max-width: 500px;">
+            <h3>Edit Announcements</h3>
+            <p style="font-size: 0.85rem; color: #666; margin-bottom: 15px; text-align: left;">
+                每次換行都會自動產生一個新項目，冒號前面的字會自動變粗體喔！
+            </p>
+            <textarea id="announcement-textarea" rows="8" style="width: 100%; padding: 12px; border: 1.5px solid #eee; border-radius: 8px; margin-bottom: 20px; font-family: inherit; resize: vertical;" placeholder="Type announcements here..."></textarea>
+            <button class="primary-btn full-width" onclick="submitAnnouncements()">Save Changes</button>
+            <button onclick="closeEditAnnouncement()" class="close-btn">Cancel</button>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

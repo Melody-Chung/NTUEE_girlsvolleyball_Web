@@ -1,0 +1,3511 @@
+// ==========================================
+// 1. Initialization and Layout Navigation
+// ==========================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. 取得目前的權限狀態
+    const savedUsername = localStorage.getItem('vbt_username');
+    const savedRole = localStorage.getItem('vbt_role');
+
+    // 2. 執行權限 UI 刷新 (確保 Guest, Member, Captain 看到的都不一樣)
+    refreshUIByRole(savedRole);
+
+    // 3. 預設顯示首頁
+    showSection('home');
+
+    // 4. 如果有存檔的資訊，更新使用者名稱等 UI
+    if (savedUsername && savedRole) {
+        applyLoginUI(savedUsername, savedRole);
+    }
+});
+
+// 🌟 核心函數：根據角色決定誰該出現、誰該消失
+function refreshUIByRole(role) {
+    const authItems = document.querySelectorAll('.auth-only');
+    const captainItems = document.querySelectorAll('.captain-only');
+
+    // 如果是 Captain，兩者都要開
+    if (role === 'captain') {
+        authItems.forEach(el => el.style.setProperty('display', 'flex', 'important'));
+        captainItems.forEach(el => el.style.setProperty('display', 'flex', 'important'));
+    } 
+    // 如果是 Member，只開 auth，關掉 captain
+    else if (role === 'member') {
+        authItems.forEach(el => el.style.setProperty('display', 'flex', 'important'));
+        captainItems.forEach(el => el.style.setProperty('display', 'none', 'important'));
+    } 
+    // 訪客模式，全部關掉
+    else {
+        authItems.forEach(el => el.style.setProperty('display', 'none', 'important'));
+        captainItems.forEach(el => el.style.setProperty('display', 'none', 'important'));
+    }
+}
+
+function toggleSidebar() {
+    const mainApp = document.getElementById('main-app');
+    mainApp.classList.toggle('sidebar-toggled');
+    updateShowcaseCropGuide();
+}
+
+function showSection(sectionId) {
+    const sections = document.querySelectorAll('.content-section');
+    sections.forEach(section => {
+        section.style.display = 'none';
+    });
+
+    const targetSection = document.getElementById(sectionId);
+    if (targetSection) {
+        targetSection.style.display = 'block';
+    } else {
+        console.error('Element with ID "' + sectionId + '" not found.');
+        return; 
+    }
+
+    const menuItems = document.querySelectorAll('.menu-list li');
+    menuItems.forEach(item => {
+        item.classList.remove('active');
+    });
+
+    const activeItem = Array.from(menuItems).find(item => {
+        const onclickAttr = item.getAttribute('onclick') || '';
+        return onclickAttr.includes(`'${sectionId}'`) || onclickAttr.includes(`"${sectionId}"`);
+    });
+
+    if (activeItem) {
+        activeItem.classList.add('active');
+    }
+
+    // Close sidebar on mobile after clicking a link
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar && sidebar.classList.contains('active')) {
+        sidebar.classList.remove('active');
+    }
+}
+
+function toggleSidebarMobile() {
+    const sidebar = document.querySelector('.sidebar');
+    if(sidebar) sidebar.classList.toggle('active'); 
+}
+
+
+
+// ==========================================
+// 2. Authentication & Account Management
+// ==========================================
+
+function openLogin() {
+    document.getElementById('login-overlay').style.setProperty('display', 'flex', 'important');
+    toggleAuthMode('login'); 
+}
+
+function closeLogin() {
+    document.getElementById('login-overlay').style.setProperty('display', 'none', 'important');
+}
+
+function toggleAuthMode(mode) {
+    const loginForm = document.getElementById('login-form-container');
+    const registerForm = document.getElementById('register-form-container');
+    const errorMsg = document.getElementById('login-error');
+    const regMsg = document.getElementById('reg-message');
+
+    if (errorMsg) errorMsg.style.display = 'none';
+    if (regMsg) regMsg.innerText = '';
+
+    if (!loginForm || !registerForm) {
+        console.error("Missing login or register form in HTML!");
+        return;
+    }
+
+    if (mode === 'login') {
+        loginForm.style.display = 'block';
+        registerForm.style.display = 'none';
+    } else {
+        loginForm.style.display = 'none';
+        registerForm.style.display = 'block';
+    }
+}
+
+function togglePasswordVisibility(inputId, spanElement) {
+    const passwordInput = document.getElementById(inputId);
+    const iconElement = spanElement.querySelector('i');
+    
+    if (passwordInput.type === 'password') {
+        passwordInput.type = 'text';
+        iconElement.classList.remove('fa-eye-slash');
+        iconElement.classList.add('fa-eye');
+    } else {
+        passwordInput.type = 'password';
+        iconElement.classList.remove('fa-eye');
+        iconElement.classList.add('fa-eye-slash');
+    }
+}
+
+async function handleRegister() {
+    const username = document.getElementById('reg-username').value.trim();
+    const role = document.getElementById('reg-role').value;
+    const password = document.getElementById('reg-password').value;
+    const messageEl = document.getElementById('reg-message');
+
+    if (!username || !password) {
+        messageEl.style.color = '#ff4757';
+        messageEl.innerText = 'Please fill in all fields.';
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, role })
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+            messageEl.style.color = '#2ecc71'; 
+            messageEl.innerText = data.message;
+            
+            document.getElementById('reg-username').value = '';
+            document.getElementById('reg-password').value = '';
+            
+            setTimeout(() => toggleAuthMode('login'), 2000);
+        } else {
+            messageEl.style.color = '#ff4757';
+            messageEl.innerText = data.error || 'Registration failed.';
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        messageEl.style.color = '#ff4757';
+        messageEl.innerText = 'Server error.';
+    }
+}
+
+async function handleLogin() {
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('login-password').value;
+    const errorMsg = document.getElementById('login-error');
+
+    if (!username || !password) {
+        errorMsg.innerText = 'Please enter name and password.';
+        errorMsg.style.display = 'block';
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        
+        const data = await response.json();
+
+        if (response.ok) {
+            errorMsg.style.display = 'none';
+            closeLogin();
+            
+            // Save login state to browser memory
+            localStorage.setItem('vbt_username', username);
+            localStorage.setItem('vbt_role', data.role);
+            
+            // Update UI
+            applyLoginUI(username, data.role);
+            showSection('home');
+
+        } else {
+            errorMsg.innerText = data.error || 'Login failed.';
+            errorMsg.style.display = 'block';
+            document.getElementById('login-password').value = '';
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        errorMsg.innerText = 'Server connection error.';
+        errorMsg.style.display = 'block';
+    }
+}
+
+/**
+ * Helper function to apply UI changes after a successful login (manual or auto)
+ */
+function applyLoginUI(username, role) {
+    // 1. 基本用戶資訊更新
+    document.getElementById('guest-zone').style.display = 'none';
+    document.getElementById('user-zone').style.display = 'flex';
+    document.getElementById('display-avatar').innerText = username.charAt(0).toUpperCase();
+    
+    const roleDisplay = document.getElementById('display-role');
+    if (roleDisplay) {
+        roleDisplay.innerText = role.toUpperCase();
+        roleDisplay.classList.remove('captain');
+        if (role === 'captain') roleDisplay.classList.add('captain');
+    }
+
+    // 🌟 2. 權限全域刷新 (關鍵修改)
+    const allAuthItems = document.querySelectorAll('.auth-only');
+    const allCaptainItems = document.querySelectorAll('.captain-only');
+
+    // 先處理所有登入者可見的
+    allAuthItems.forEach(item => {
+        if (role === 'captain' || role === 'member') {
+            // 如果是 Member 且該元素同時又是 Captain-only，就隱藏
+            if (role === 'member' && item.classList.contains('captain-only')) {
+                item.style.setProperty('display', 'none', 'important');
+            } else {
+                item.style.setProperty('display', 'flex', 'important');
+            }
+        } else {
+            item.style.setProperty('display', 'none', 'important');
+        }
+    });
+
+    // 🌟 額外處理「純 Captain」的元素 (例如你的 Scraper Panel)
+    allCaptainItems.forEach(item => {
+        if (role === 'captain') {
+            item.style.setProperty('display', 'flex', 'important');
+        } else {
+            item.style.setProperty('display', 'none', 'important');
+        }
+    });
+
+    // 3. 載入相關數據
+    if (role === 'captain') {
+        loadPendingUsers();
+        loadTeamMembers();
+    }
+    loadGallery();
+    loadCourtStatus();
+}
+
+function handleLogout() {
+    // Clear browser memory on logout
+    localStorage.removeItem('vbt_username');
+    localStorage.removeItem('vbt_role');
+    location.reload(); 
+}
+
+function toggleAvatarMenu(event) {
+    event.stopPropagation(); 
+    const menu = document.getElementById('avatarMenu');
+    if(menu) menu.classList.toggle('active');
+}
+
+window.onclick = function(event) {
+    if (!event.target.closest('.avatar-dropdown-container')) {
+        const dropdowns = document.getElementsByClassName("avatar-dropdown-menu");
+        for (let i = 0; i < dropdowns.length; i++) {
+            if (dropdowns[i].classList.contains('active')) {
+                dropdowns[i].classList.remove('active');
+            }
+        }
+    }
+}
+
+
+// ==========================================
+// 3. Captain Panel: Role & User Management
+// ==========================================
+
+async function loadPendingUsers() {
+    const container = document.getElementById('pending-users-container');
+    if (!container) return;
+    
+    try {
+        const response = await fetch('/api/pending_users');
+        const users = await response.json();
+        
+        if (users.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:#999; padding: 20px;">No pending requests.</p>';
+            return;
+        }
+        
+        let html = '<ul style="list-style: none; padding: 0;">';
+        users.forEach(user => {
+            html += `
+                <li style="display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid #eee;">
+                    <div>
+                        <strong style="font-size: 1.1em;">${user.username}</strong> 
+                        <span style="color: #666; font-size: 0.9em; margin-left: 10px; background: #f0f2f5; padding: 4px 8px; border-radius: 6px;">Requested Role: ${user.role}</span>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button onclick="approveUser(${user.id}, 'approve')" class="primary-btn-sm" style="background: #2ecc71;">Approve</button>
+                        <button onclick="approveUser(${user.id}, 'reject')" class="primary-btn-sm" style="background: #e74c3c;">Reject</button>
+                    </div>
+                </li>
+            `;
+        });
+        html += '</ul>';
+        container.innerHTML = html;
+        
+    } catch (error) {
+        container.innerHTML = '<p style="text-align:center; color:#e74c3c;">Failed to load data.</p>';
+    }
+}
+
+async function approveUser(userId, action) {
+    if (!confirm(`Are you sure you want to ${action} this user?`)) return;
+    
+    try {
+        const response = await fetch('/api/approve_user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId, action: action })
+        });
+        
+        if (response.ok) {
+            loadPendingUsers(); 
+            loadTeamMembers();
+        } else {
+            alert('Action failed.');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+    }
+}
+
+async function loadTeamMembers() {
+    const container = document.getElementById('team-members-container');
+    if (!container) return;
+    
+    try {
+        const response = await fetch('/api/team_members');
+        const users = await response.json();
+        
+        if (users.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:#999; padding: 20px;">No other members yet.</p>';
+            return;
+        }
+        
+        let html = '<ul style="list-style: none; padding: 0;">';
+        users.forEach(user => {
+            const isCaptain = user.role === 'captain' ? 'selected' : '';
+            const isMember = user.role === 'member' ? 'selected' : '';
+            
+            html += `
+                <li style="display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid #eee;">
+                    <div>
+                        <strong style="font-size: 1.1em;">${user.username}</strong> 
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <select onchange="changeUserRole(${user.id}, this.value)" style="padding: 6px 10px; border-radius: 6px; width: auto; margin-bottom: 0;">
+                            <option value="member" ${isMember}>Member</option>
+                            <option value="captain" ${isCaptain}>Captain</option>
+                        </select>
+                        <button onclick="deleteUser(${user.id})" class="primary-btn-sm" style="background: #e74c3c;">Delete</button>
+                    </div>
+                </li>
+            `;
+        });
+        html += '</ul>';
+        container.innerHTML = html;
+        
+    } catch (error) {
+        container.innerHTML = '<p style="text-align:center; color:#e74c3c;">Failed to load roster.</p>';
+    }
+}
+
+async function deleteUser(userId) {
+    if (!confirm('Are you sure you want to permanently delete this account?')) return;
+    
+    try {
+        const response = await fetch('/api/delete_user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId })
+        });
+        
+        if (response.ok) {
+            loadTeamMembers(); 
+        } else {
+            alert('Failed to delete user.');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+    }
+}
+
+async function changeUserRole(userId, newRole) {
+    if (!confirm(`Are you sure you want to change this user's role to ${newRole.toUpperCase()}?`)) {
+        loadTeamMembers(); 
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/update_role', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId, new_role: newRole })
+        });
+        
+        if (response.ok) {
+            alert(`Role successfully updated to ${newRole}.`);
+            loadTeamMembers(); 
+        } else {
+            alert('Failed to update role.');
+        }
+    } catch (error) {
+        console.error('Error updating role:', error);
+    }
+}
+
+
+// ==========================================
+// 4. Match Analysis & Videos
+// ==========================================
+
+let videoSectionsState = [];
+let activeVideoNotesSectionId = null;
+
+function getYouTubeVideoId(url) {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = String(url || '').match(regExp);
+    return (match && match[2] && match[2].length === 11) ? match[2] : null;
+}
+
+function updateVideoSectionSelect() {
+    const select = document.getElementById('video-section-select');
+    if (!select) return;
+    const sections = Array.isArray(videoSectionsState) ? videoSectionsState : [];
+    if (!sections.length) {
+        select.innerHTML = '<option value="">Create a section first</option>';
+        return;
+    }
+    select.innerHTML = '<option value="">Choose section</option>' + sections.map((section) => `
+        <option value="${section.id}">${escapeHtml(section.title)}</option>
+    `).join('');
+}
+
+function renderVideoThumbnailCard(video, sectionId) {
+    const videoId = getYouTubeVideoId(video.url);
+    const thumbnailUrl = videoId ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` : '';
+    const title = video.title && video.title.trim() ? video.title.trim() : 'Match Video';
+    const preview = videoId
+        ? `<div class="video-preview" style="background-image: url('${thumbnailUrl}'); height: 160px; background-size: cover;"></div>`
+        : `<div class="video-preview" style="height: 160px;"><span class="play-label">Open Link</span></div>`;
+    return `
+        <div class="video-card">
+            <button class="delete-btn" onclick="deleteVideoItem(${video.id}, ${sectionId})">Delete</button>
+            <a href="${escapeHtml(video.url)}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; color: inherit;">
+                ${preview}
+                <div class="video-info">
+                    <h5>${escapeHtml(title)}</h5>
+                    <p>${escapeHtml(video.url.length > 46 ? `${video.url.slice(0, 46)}...` : video.url)}</p>
+                </div>
+            </a>
+        </div>
+    `;
+}
+
+function renderVideoSections() {
+    const container = document.getElementById('video-sections-container');
+    if (!container) return;
+    const sections = Array.isArray(videoSectionsState) ? videoSectionsState : [];
+    if (!sections.length) {
+        container.innerHTML = '<div class="card"><p style="color:#7b8c9b; margin:0;">No match sections yet. Create one above to start organising videos.</p></div>';
+        updateVideoSectionSelect();
+        return;
+    }
+
+    container.innerHTML = sections.map((section) => `
+        <div class="video-section-card">
+            <div class="video-section-card__header">
+                <div class="video-section-card__title">
+                    <h4>${escapeHtml(section.title)}</h4>
+                    <button type="button" class="video-section-card__meta" onclick="openVideoNotesModal(${section.id})">
+                        <i class="fas fa-file-alt"></i>
+                        <span>Notes</span>
+                        <small>${Array.isArray(section.notes) ? section.notes.length : 0}</small>
+                    </button>
+                </div>
+                <button type="button" class="video-section-card__delete" onclick="deleteVideoSection(${section.id})">Delete</button>
+            </div>
+            <div class="video-section-card__body">
+                ${section.videos && section.videos.length
+                    ? `<div class="video-section-card__scroller">${section.videos.map((video) => renderVideoThumbnailCard(video, section.id)).join('')}</div>`
+                    : '<div class="video-section-card__empty">No videos in this section yet.</div>'}
+            </div>
+        </div>
+    `).join('');
+    updateVideoSectionSelect();
+}
+
+async function loadVideoSections() {
+    try {
+        const response = await fetch('/api/video_sections');
+        videoSectionsState = await response.json();
+        renderVideoSections();
+    } catch (error) {
+        console.error('Failed to load video sections', error);
+    }
+}
+
+async function createVideoSection() {
+    const input = document.getElementById('video-section-title');
+    const title = input ? input.value.trim() : '';
+    if (!title) {
+        alert('Please enter a section title.');
+        return;
+    }
+
+    const response = await fetch('/api/video_sections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+    });
+    if (!response.ok) {
+        alert('Failed to create section.');
+        return;
+    }
+
+    if (input) input.value = '';
+    await loadVideoSections();
+}
+
+async function addVideo() {
+    const urlInput = document.getElementById('video-url');
+    const titleInput = document.getElementById('video-title');
+    const sectionSelect = document.getElementById('video-section-select');
+    const url = urlInput ? urlInput.value.trim() : '';
+    const title = titleInput ? titleInput.value.trim() : '';
+    const sectionId = sectionSelect ? sectionSelect.value : '';
+
+    if (!sectionId) return alert('Please choose a section first.');
+    if (!url) return alert('Please enter a YouTube URL.');
+
+    const response = await fetch('/add_video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, title, section_id: Number(sectionId) }),
+    });
+
+    if (!response.ok) {
+        alert('Failed to save video to database.');
+        return;
+    }
+
+    if (urlInput) urlInput.value = '';
+    if (titleInput) titleInput.value = '';
+    await loadVideoSections();
+}
+
+async function deleteVideoItem(videoId, sectionId) {
+    if (!confirm('Delete this video from the section?')) return;
+    try {
+        const response = await fetch('/delete_video', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: videoId }),
+        });
+        if (!response.ok) {
+            alert('Failed to delete video from database.');
+            return;
+        }
+        await loadVideoSections();
+        if (activeVideoNotesSectionId === sectionId) {
+            openVideoNotesModal(sectionId);
+        }
+    } catch (error) {
+        console.error('Error deleting video:', error);
+    }
+}
+
+async function deleteVideoSection(sectionId) {
+    if (!confirm('Delete this whole match section, including its videos and notes?')) return;
+    const response = await fetch(`/api/video_sections/${sectionId}`, { method: 'DELETE' });
+    if (!response.ok) {
+        alert('Failed to delete section.');
+        return;
+    }
+    if (activeVideoNotesSectionId === sectionId) closeVideoNotesModal();
+    await loadVideoSections();
+}
+
+function buildVideoNoteRow(note = {}) {
+    return `
+        <div class="video-note-row">
+            <div class="video-note-row__top">
+                <input type="text" class="video-note-match" placeholder="Match name" value="${escapeHtml(note.match_name || '')}">
+                <input type="text" class="video-note-score" placeholder="Score" value="${escapeHtml(note.score || '')}">
+                <button type="button" class="video-note-row__remove" onclick="removeVideoNoteRow(this)">Remove</button>
+            </div>
+            <textarea class="video-note-content" placeholder="Notes">${escapeHtml(note.notes || '')}</textarea>
+        </div>
+    `;
+}
+
+function addVideoNoteRow(note = {}) {
+    const list = document.getElementById('video-notes-list');
+    if (!list) return;
+    list.insertAdjacentHTML('beforeend', buildVideoNoteRow(note));
+}
+
+function removeVideoNoteRow(button) {
+    const row = button.closest('.video-note-row');
+    if (row) row.remove();
+}
+
+function openVideoNotesModal(sectionId) {
+    const section = videoSectionsState.find((item) => item.id === sectionId);
+    const modal = document.getElementById('video-notes-modal');
+    const title = document.getElementById('video-notes-modal-title');
+    const list = document.getElementById('video-notes-list');
+    if (!section || !modal || !title || !list) return;
+
+    activeVideoNotesSectionId = sectionId;
+    title.textContent = section.title;
+    list.innerHTML = '';
+    const notes = Array.isArray(section.notes) && section.notes.length ? section.notes : [{}];
+    notes.forEach((note) => addVideoNoteRow(note));
+    modal.style.display = 'flex';
+}
+
+function closeVideoNotesModal() {
+    const modal = document.getElementById('video-notes-modal');
+    if (modal) modal.style.display = 'none';
+    activeVideoNotesSectionId = null;
+}
+
+async function saveVideoNotes() {
+    if (!activeVideoNotesSectionId) return;
+    const rows = Array.from(document.querySelectorAll('#video-notes-list .video-note-row'));
+    const notes = rows.map((row) => ({
+        match_name: row.querySelector('.video-note-match')?.value.trim() || '',
+        score: row.querySelector('.video-note-score')?.value.trim() || '',
+        notes: row.querySelector('.video-note-content')?.value.trim() || '',
+    })).filter((item) => item.match_name || item.score || item.notes);
+
+    const response = await fetch(`/api/video_sections/${activeVideoNotesSectionId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes }),
+    });
+    if (!response.ok) {
+        alert('Failed to save notes.');
+        return;
+    }
+
+    closeVideoNotesModal();
+    await loadVideoSections();
+}
+
+window.addEventListener('load', loadVideoSections);
+window.addEventListener('load', initCourtWeekdayFilters);
+window.addEventListener('load', loadCourtStatus);
+
+// ==========================================
+// 5. Application Feature Functions (Mocks & Tools)
+// ==========================================
+async function uploadPhotos() {
+    const fileInput = document.getElementById('photo-upload');
+    const uploadBtn = fileInput.nextElementSibling;
+
+    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+        alert('Please select photos to upload first.');
+        return;
+    }
+
+    // Prepare files to be sent to the backend
+    const formData = new FormData();
+    Array.from(fileInput.files).forEach(file => {
+        formData.append('file', file);
+    });
+    
+    // Attach uploader name from LocalStorage
+    const uploader = localStorage.getItem('vbt_username') || 'Guest';
+    formData.append('uploader', uploader);
+
+    // Update UI to show loading state
+    const originalText = uploadBtn.innerText;
+    uploadBtn.innerText = 'Uploading...';
+    uploadBtn.disabled = true;
+
+    try {
+        const response = await fetch('/api/upload-photo', {
+            method: 'POST',
+            body: formData // No Headers needed, browser handles FormData boundary automatically
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            fileInput.value = ''; 
+            document.getElementById('file-chosen-text').innerText = 'No files chosen';
+            document.getElementById('file-chosen-text').style.color = '#666';
+            loadGallery();
+        } else {                alert(data.message || 'System denied access. Please log in to the NTU venue system, then try scraping again.');
+        }
+    } catch (error) {
+        console.error('Upload error:', error);
+        alert('Server error during upload.');
+    } finally {
+        uploadBtn.innerText = originalText;
+        uploadBtn.disabled = false;
+    }
+}
+async function loadGallery() {
+    const gallery = document.querySelector('.photo-gallery');
+    if (!gallery) return;
+
+    const currentRole = localStorage.getItem('vbt_role');
+    const canDelete = currentRole === 'member' || currentRole === 'captain';
+    const canSelect = currentRole === 'captain'; // 假設只有隊長可以決定輪播照片
+
+    try {
+        // 同時抓取所有照片，以及「被選中」的照片名單
+        const [galleryRes, selectedRes] = await Promise.all([
+            fetch('/api/gallery'),
+            fetch('/api/showcase_photos')
+        ]);
+        
+        const photos = await galleryRes.json();
+        const selectedPhotos = await selectedRes.json();
+        
+        gallery.innerHTML = ''; 
+        if (photos.length === 0) {
+            gallery.innerHTML = '<p style="color:#999; grid-column: 1 / -1;">No photos yet. Be the first to upload!</p>';
+            return;
+        }
+
+        photos.forEach(filename => {
+            const card = document.createElement('div');
+            card.className = 'photo-card';
+            const imgPath = `/static/uploads/gallery/${filename}`;
+            const isSelected = selectedPhotos.includes(filename);
+            
+            if (isSelected) {
+                card.classList.add('selected');
+            }
+            
+            let actionBtnsHtml = '';
+            if (canDelete) {
+                actionBtnsHtml += `<button class="photo-delete-btn" onclick="deletePhoto('${filename}', this)">Delete</button>`;
+            }
+            // 新增：加入輪播圖的按鈕
+            if (canSelect) {
+                const btnText = isSelected ? '★ Shown' : '☆ Select';
+                actionBtnsHtml += `<button class="photo-toggle-btn" onclick="toggleShowcasePhoto('${filename}', this)">${btnText}</button>`;
+            }
+            card.innerHTML = `
+                ${actionBtnsHtml}
+                <img src="${imgPath}" alt="${filename}" class="gallery-img" onclick="openLightbox('${imgPath}')">
+            `;
+            gallery.appendChild(card);
+        });
+        updateShowcaseCropGuide();
+    } catch (error) {
+        console.error('Error loading gallery:', error);
+    }
+}
+
+function updateShowcaseCropGuide() {
+    const root = document.documentElement;
+    if (!root) return;
+    const mainApp = document.getElementById('main-app');
+    const showcase = document.getElementById('showcase-slider-container') || document.getElementById('hero-slider-container');
+    const mainContent = document.querySelector('.main-content');
+    if (!mainApp || !showcase || !mainContent) return;
+
+    const originalToggled = mainApp.classList.contains('sidebar-toggled');
+    const originalDisplay = showcase.style.display;
+    const originalVisibility = showcase.style.visibility;
+    if (getComputedStyle(showcase).display === 'none') {
+        showcase.style.visibility = 'hidden';
+        showcase.style.display = 'block';
+    }
+
+    const measureInsets = (toggled) => {
+        mainApp.classList.toggle('sidebar-toggled', toggled);
+        const showcaseRect = showcase.getBoundingClientRect();
+        const mainRect = mainContent.getBoundingClientRect();
+        const visibleLeft = Math.max(showcaseRect.left, mainRect.left);
+        const visibleRight = Math.min(showcaseRect.right, mainRect.right);
+        const width = showcaseRect.width || 1;
+        return {
+            left: Math.max(0, ((visibleLeft - showcaseRect.left) / width) * 100),
+            right: Math.max(0, ((showcaseRect.right - visibleRight) / width) * 100),
+        };
+    };
+
+    const openInsets = measureInsets(false);
+    const closedInsets = measureInsets(true);
+
+    mainApp.classList.toggle('sidebar-toggled', originalToggled);
+    showcase.style.display = originalDisplay;
+    showcase.style.visibility = originalVisibility;
+
+    root.style.setProperty('--showcase-open-left-inset', `${openInsets.left}%`);
+    root.style.setProperty('--showcase-open-right-inset', `${openInsets.right}%`);
+    root.style.setProperty('--showcase-closed-left-inset', `${closedInsets.left}%`);
+    root.style.setProperty('--showcase-closed-right-inset', `${closedInsets.right}%`);
+}
+
+const updateHeroCropGuide = updateShowcaseCropGuide;
+
+const showcaseCropState = {
+    filename: null,
+    imageSrc: null,
+    naturalWidth: 0,
+    naturalHeight: 0,
+    baseScale: 1,
+    scaleMultiplier: 1,
+    offsetX: 0,
+    offsetY: 0,
+    dragStartX: 0,
+    dragStartY: 0,
+    startOffsetX: 0,
+    startOffsetY: 0,
+    pointerId: null,
+    triggerButton: null,
+};
+
+function getShowcaseCropElements() {
+    return {
+        modal: document.getElementById('showcase-crop-modal') || document.getElementById('hero-crop-modal'),
+        stage: document.getElementById('showcase-crop-stage') || document.getElementById('hero-crop-stage'),
+        image: document.getElementById('showcase-crop-image') || document.getElementById('hero-crop-image'),
+        zoom: document.getElementById('showcase-crop-zoom') || document.getElementById('hero-crop-zoom'),
+    };
+}
+
+function applyShowcaseCropTransform() {
+    const { stage, image } = getShowcaseCropElements();
+    if (!stage || !image || !showcaseCropState.naturalWidth || !showcaseCropState.naturalHeight) return;
+    const stageWidth = stage.clientWidth;
+    const stageHeight = stage.clientHeight;
+    const scale = showcaseCropState.baseScale * showcaseCropState.scaleMultiplier;
+    const displayWidth = showcaseCropState.naturalWidth * scale;
+    const displayHeight = showcaseCropState.naturalHeight * scale;
+    const maxOffsetX = Math.max(0, (displayWidth - stageWidth) / 2);
+    const maxOffsetY = Math.max(0, (displayHeight - stageHeight) / 2);
+    showcaseCropState.offsetX = Math.min(maxOffsetX, Math.max(-maxOffsetX, showcaseCropState.offsetX));
+    showcaseCropState.offsetY = Math.min(maxOffsetY, Math.max(-maxOffsetY, showcaseCropState.offsetY));
+    image.style.transform = `translate(-50%, -50%) translate(${showcaseCropState.offsetX}px, ${showcaseCropState.offsetY}px) scale(${scale})`;
+}
+
+function nudgeShowcaseCrop(deltaX, deltaY) {
+    if (!showcaseCropState.filename) return;
+    showcaseCropState.offsetX += deltaX;
+    showcaseCropState.offsetY += deltaY;
+    applyShowcaseCropTransform();
+}
+
+function initShowcaseCropInteractions() {
+    const { stage, zoom } = getShowcaseCropElements();
+    if (!stage || stage.dataset.bound === 'true') return;
+    stage.dataset.bound = 'true';
+
+    stage.addEventListener('pointerdown', (event) => {
+        if (!showcaseCropState.filename) return;
+        showcaseCropState.pointerId = event.pointerId;
+        showcaseCropState.dragStartX = event.clientX;
+        showcaseCropState.dragStartY = event.clientY;
+        showcaseCropState.startOffsetX = showcaseCropState.offsetX;
+        showcaseCropState.startOffsetY = showcaseCropState.offsetY;
+        stage.classList.add('is-dragging');
+        stage.setPointerCapture(event.pointerId);
+    });
+
+    stage.addEventListener('pointermove', (event) => {
+        if (showcaseCropState.pointerId !== event.pointerId) return;
+        showcaseCropState.offsetX = showcaseCropState.startOffsetX + (event.clientX - showcaseCropState.dragStartX);
+        showcaseCropState.offsetY = showcaseCropState.startOffsetY + (event.clientY - showcaseCropState.dragStartY);
+        applyShowcaseCropTransform();
+    });
+
+    const endDrag = (event) => {
+        if (showcaseCropState.pointerId !== event.pointerId) return;
+        showcaseCropState.pointerId = null;
+        stage.classList.remove('is-dragging');
+    };
+    stage.addEventListener('pointerup', endDrag);
+    stage.addEventListener('pointercancel', endDrag);
+
+    if (zoom) {
+        zoom.addEventListener('input', () => {
+            showcaseCropState.scaleMultiplier = Number.parseFloat(zoom.value) || 1;
+            applyShowcaseCropTransform();
+        });
+    }
+}
+
+async function openShowcaseCropModal(filename, btnElement) {
+    const { modal, stage, image, zoom } = getShowcaseCropElements();
+    if (!modal || !stage || !image || !zoom) return;
+    initShowcaseCropInteractions();
+    updateShowcaseCropGuide();
+
+    showcaseCropState.filename = filename;
+    showcaseCropState.imageSrc = `/static/uploads/gallery/${filename}`;
+    showcaseCropState.triggerButton = btnElement || null;
+    showcaseCropState.offsetX = 0;
+    showcaseCropState.offsetY = 0;
+    showcaseCropState.scaleMultiplier = 1.12;
+    zoom.value = '1.12';
+    modal.style.display = 'flex';
+
+    const loader = new Image();
+    loader.onload = () => {
+        showcaseCropState.naturalWidth = loader.naturalWidth;
+        showcaseCropState.naturalHeight = loader.naturalHeight;
+        image.src = showcaseCropState.imageSrc;
+        requestAnimationFrame(() => {
+            showcaseCropState.baseScale = Math.max(stage.clientWidth / loader.naturalWidth, stage.clientHeight / loader.naturalHeight);
+            applyShowcaseCropTransform();
+        });
+    };
+    loader.src = showcaseCropState.imageSrc;
+}
+
+function closeShowcaseCropModal() {
+    const { modal } = getShowcaseCropElements();
+    if (modal) modal.style.display = 'none';
+    showcaseCropState.filename = null;
+    showcaseCropState.triggerButton = null;
+    showcaseCropState.pointerId = null;
+}
+
+async function saveShowcaseCrop() {
+    const { stage } = getShowcaseCropElements();
+    if (!stage || !showcaseCropState.filename || !showcaseCropState.naturalWidth || !showcaseCropState.naturalHeight) return;
+
+    const stageWidth = stage.clientWidth;
+    const stageHeight = stage.clientHeight;
+    const outputWidth = 1600;
+    const outputHeight = Math.round(outputWidth * (stageHeight / stageWidth));
+    const scale = showcaseCropState.baseScale * showcaseCropState.scaleMultiplier;
+    const displayWidth = showcaseCropState.naturalWidth * scale;
+    const displayHeight = showcaseCropState.naturalHeight * scale;
+    const imageLeft = (stageWidth / 2) - (displayWidth / 2) + showcaseCropState.offsetX;
+    const imageTop = (stageHeight / 2) - (displayHeight / 2) + showcaseCropState.offsetY;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = outputWidth;
+    canvas.height = outputHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, outputWidth, outputHeight);
+
+    const img = new Image();
+    img.onload = async () => {
+        const ratioX = outputWidth / stageWidth;
+        const ratioY = outputHeight / stageHeight;
+        ctx.drawImage(img, imageLeft * ratioX, imageTop * ratioY, displayWidth * ratioX, displayHeight * ratioY);
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+        if (!blob) return;
+
+        const formData = new FormData();
+        formData.append('filename', showcaseCropState.filename);
+        formData.append('crop', blob, `${showcaseCropState.filename.replace(/\.[^.]+$/, '')}_showcase.jpg`);
+        const response = await fetch('/api/showcase_photo_crop', { method: 'POST', body: formData });
+        if (!response.ok) {
+            alert('Failed to save showcase crop.');
+            return;
+        }
+
+        const selectedResponse = await fetch('/api/showcase_photos');
+        let selectedPhotos = await selectedResponse.json();
+        if (!selectedPhotos.includes(showcaseCropState.filename)) {
+            selectedPhotos.push(showcaseCropState.filename);
+            await fetch('/api/showcase_photos', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ photos: selectedPhotos }),
+            });
+        }
+
+        closeShowcaseCropModal();
+        await loadGallery();
+        loadShowcaseSlider();
+    };
+    img.src = showcaseCropState.imageSrc;
+}
+
+// 處理點擊「加入/移除輪播」的邏輯
+async function toggleShowcasePhoto(filename, btnElement) {
+    const card = btnElement.parentElement;
+    const isCurrentlySelected = card.classList.contains('selected');
+
+    const response = await fetch('/api/showcase_photos');
+    let selectedPhotos = await response.json();
+
+    if (isCurrentlySelected) {
+        selectedPhotos = selectedPhotos.filter(p => p !== filename);
+        card.classList.remove('selected');
+        btnElement.innerText = '☆ Select';
+
+        await fetch('/api/showcase_photos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ photos: selectedPhotos })
+        });
+
+        loadShowcaseSlider();
+        return;
+    }
+
+    openShowcaseCropModal(filename, btnElement);
+}
+
+const getHeroCropElements = getShowcaseCropElements;
+const applyHeroCropTransform = applyShowcaseCropTransform;
+const nudgeHeroCrop = nudgeShowcaseCrop;
+const initHeroCropInteractions = initShowcaseCropInteractions;
+const openHeroCropModal = openShowcaseCropModal;
+const closeHeroCropModal = closeShowcaseCropModal;
+const saveHeroCrop = saveShowcaseCrop;
+const toggleHeroPhoto = toggleShowcasePhoto;
+
+/**
+ * Handle deleting a photo from the gallery
+ */
+async function deletePhoto(filename, btnElement) {
+    if (!confirm('Are you sure you want to delete this photo?')) return;
+    
+    // Remove from UI immediately for better user experience
+    const card = btnElement.parentElement;
+    card.remove();
+
+    try {
+        const response = await fetch('/api/delete-photo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: filename })
+        });
+
+        if (!response.ok) {
+            alert('Failed to delete photo from server.');
+            loadGallery(); // Reload from DB to sync UI if deletion failed
+        }
+    } catch (error) {
+        console.error('Error deleting photo:', error);
+    }
+}
+
+function updateFileCount(input) {
+    const textSpan = document.getElementById('file-chosen-text');
+    if (input.files && input.files.length > 0) {
+        textSpan.innerText = `${input.files.length} files selected`;
+        textSpan.style.color = 'var(--accent-color)';
+        textSpan.style.fontWeight = 'bold';
+    } else {
+        textSpan.innerText = 'No files chosen';
+        textSpan.style.color = '#666';
+        textSpan.style.fontWeight = 'normal';
+    }
+}
+
+/**
+ * Lightbox Functions
+ */
+function openLightbox(src) {
+    const lightbox = document.getElementById('lightbox-overlay');
+    const lightboxImg = document.getElementById('lightbox-img');
+    lightboxImg.src = src;
+    lightbox.style.display = 'flex';
+}
+
+function closeLightbox() {
+    const lightbox = document.getElementById('lightbox-overlay');
+    lightbox.style.display = 'none';
+}
+
+// Ensure gallery loads automatically on page startup
+window.addEventListener('load', loadGallery);
+window.addEventListener('load', updateShowcaseCropGuide);
+window.addEventListener('resize', updateShowcaseCropGuide);
+window.addEventListener('load', initTrainingMenu);
+window.addEventListener('load', initPracticeWeekdayListeners);
+
+const menuState = {
+    rows: [],
+    editingId: null,
+    editorOpen: false,
+    practiceMenu: {
+        first_half: [],
+        second_half: [],
+        weekdays: [],
+        updated_at: ''
+    },
+    generatedRows: [],
+    matchingRows: [],
+    filters: {
+        focuses: [],
+        complexities: [],
+        fatigue_levels: [],
+        difficulty_levels: []
+    }
+};
+
+const PRACTICE_WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function createMenuCheckboxMarkup(name, value, label, checked = false) {
+    return `
+        <label class="custom-checkbox menu-checkbox">
+            <input type="checkbox" name="${name}" value="${escapeHtml(value)}" ${checked ? 'checked' : ''}>
+            <span>${escapeHtml(label)}</span>
+        </label>
+    `;
+}
+
+function renderMenuFilterOptions(filters) {
+    const focusGrid = document.getElementById('menu-focus-grid');
+    const complexityGrid = document.getElementById('menu-complexity-grid');
+    const fatigueGrid = document.getElementById('menu-fatigue-grid');
+    const difficultyGrid = document.getElementById('menu-difficulty-grid');
+
+    if (focusGrid) {
+        focusGrid.innerHTML = filters.focuses.map((value) => createMenuCheckboxMarkup('menu-focus', value, value)).join('');
+    }
+    if (complexityGrid) {
+        complexityGrid.innerHTML = filters.complexities.map((value) => createMenuCheckboxMarkup('menu-complexity', value, value)).join('');
+    }
+    if (fatigueGrid) {
+        fatigueGrid.innerHTML = filters.fatigue_levels.map((value) => createMenuCheckboxMarkup('menu-fatigue', value, value)).join('');
+    }
+    if (difficultyGrid) {
+        difficultyGrid.innerHTML = filters.difficulty_levels.map((value) => createMenuCheckboxMarkup('menu-difficulty', value, value)).join('');
+    }
+}
+
+function setMenuFilterChecked(name, checked) {
+    document.querySelectorAll(`input[name="${name}"]`).forEach((input) => {
+        input.checked = checked;
+    });
+}
+
+function selectAllMenuFilters() {
+    setMenuFilterChecked('menu-focus', true);
+    setMenuFilterChecked('menu-complexity', true);
+    setMenuFilterChecked('menu-fatigue', true);
+    setMenuFilterChecked('menu-difficulty', true);
+    generateMenu();
+}
+
+function initMenuFilterAutoRefresh() {
+    ['menu-players', 'menu-court-mode', 'menu-plan-size'].forEach((id) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.addEventListener('change', generateMenu);
+            element.addEventListener('input', generateMenu);
+        }
+    });
+    ['menu-focus-grid', 'menu-complexity-grid', 'menu-fatigue-grid', 'menu-difficulty-grid'].forEach((id) => {
+        const container = document.getElementById(id);
+        if (container) {
+            container.addEventListener('change', generateMenu);
+        }
+    });
+}
+
+function getCheckedMenuValues(name) {
+    return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map((input) => input.value);
+}
+
+function getMenuFiltersFromUI() {
+    const playersInput = document.getElementById('menu-players');
+    const courtModeInput = document.getElementById('menu-court-mode');
+    const planSizeInput = document.getElementById('menu-plan-size');
+
+    return {
+        maxPlayers: Math.max(1, Number.parseInt(playersInput?.value || '0', 10) || 0),
+        courtMode: courtModeInput?.value || '',
+        planSize: Math.max(1, Number.parseInt(planSizeInput?.value || '5', 10) || 5),
+        focuses: getCheckedMenuValues('menu-focus'),
+        complexities: getCheckedMenuValues('menu-complexity'),
+        fatigueLevels: getCheckedMenuValues('menu-fatigue'),
+        difficultyLevels: getCheckedMenuValues('menu-difficulty')
+    };
+}
+
+function intersects(values, selected) {
+    if (!selected || selected.length === 0) return true;
+    return values.some((item) => selected.includes(item));
+}
+
+function getFilteredMenuRows() {
+    const filters = getMenuFiltersFromUI();
+    return menuState.rows.filter((row) => {
+        if (filters.maxPlayers && row.people_count && row.people_count > filters.maxPlayers) return false;
+        if (filters.courtMode && !row.court_modes.includes(filters.courtMode)) return false;
+        if (!intersects(row.focuses, filters.focuses)) return false;
+        if (!intersects(row.complexities, filters.complexities)) return false;
+        if (!intersects(row.fatigue_levels, filters.fatigueLevels)) return false;
+        if (!intersects(row.difficulty_levels, filters.difficultyLevels)) return false;
+        return true;
+    });
+}
+
+function scoreMenuRow(row, filters) {
+    let score = 0;
+    score += row.focuses.filter((item) => filters.focuses.includes(item)).length * 5;
+    score += row.complexities.filter((item) => filters.complexities.includes(item)).length * 2;
+    score += row.fatigue_levels.filter((item) => filters.fatigueLevels.includes(item)).length * 2;
+    score += row.difficulty_levels.filter((item) => filters.difficultyLevels.includes(item)).length * 2;
+    if (filters.maxPlayers && row.people_count) {
+        score += Math.max(0, 4 - Math.abs(filters.maxPlayers - row.people_count));
+    }
+    if (filters.courtMode && row.court_modes.includes(filters.courtMode)) {
+        score += 2;
+    }
+    return score;
+}
+
+function pickRecommendedMenuRows(rows, filters) {
+    const sortedRows = [...rows].sort((a, b) => {
+        const scoreDiff = scoreMenuRow(b, filters) - scoreMenuRow(a, filters);
+        if (scoreDiff !== 0) return scoreDiff;
+        return sortMenuRows([a, b])[0] === a ? -1 : 1;
+    });
+    return sortedRows.slice(0, filters.planSize);
+}
+
+function getMenuCourtRank(courtModes) {
+    const values = new Set(courtModes || []);
+    if (values.has('有場') && !values.has('沒場')) return 0;
+    if (values.has('有場') && values.has('沒場')) return 1;
+    if (values.has('沒場')) return 2;
+    return 3;
+}
+
+function getMenuDifficultyRank(difficultyLevels) {
+    const rankMap = { '簡單': 0, '普通': 1, '困難': 2 };
+    const ranks = (difficultyLevels || []).map((item) => rankMap[item]).filter((item) => Number.isFinite(item));
+    return ranks.length ? Math.min(...ranks) : 99;
+}
+
+function sortMenuRows(rows) {
+    return [...rows].sort((a, b) => {
+        const courtDiff = getMenuCourtRank(a.court_modes) - getMenuCourtRank(b.court_modes);
+        if (courtDiff !== 0) return courtDiff;
+        const peopleDiff = (a.people_count || 999) - (b.people_count || 999);
+        if (peopleDiff !== 0) return peopleDiff;
+        const difficultyDiff = getMenuDifficultyRank(a.difficulty_levels) - getMenuDifficultyRank(b.difficulty_levels);
+        if (difficultyDiff !== 0) return difficultyDiff;
+        return String(a.name || '').localeCompare(String(b.name || ''));
+    });
+}
+
+function renderMenuCard(row, index = null) {
+    const badges = [
+        `<span class="menu-badge">Players ${escapeHtml(String(row.people_count || '-'))}</span>`,
+        ...row.court_modes.map((item) => `<span class="menu-badge">${escapeHtml(item)}</span>`),
+        ...row.complexities.map((item) => `<span class="menu-badge">${escapeHtml(item)}</span>`),
+        ...row.fatigue_levels.map((item) => `<span class="menu-badge">${escapeHtml(item)}</span>`),
+        ...row.difficulty_levels.map((item) => `<span class="menu-badge">${escapeHtml(item)}</span>`)
+    ].join('');
+
+    return `
+        <article class="menu-result-card">
+            <div class="menu-result-card__header">
+                <div>
+                    <div class="menu-result-card__eyebrow">${index === null ? 'Matching Drill' : `Drill ${index + 1}`}</div>
+                    <h4>${escapeHtml(row.name)}</h4>
+                </div>
+                <div class="menu-result-card__badges">${badges}</div>
+            </div>
+            <div class="menu-result-card__meta">
+                <div><strong>Focus</strong><span>${escapeHtml(row.focuses.join(' / ') || '-')}</span></div>
+            </div>
+        </article>
+    `;
+}
+
+function createPracticeMenuSourceItem(row, sourceLabel, sourceType) {
+    const encodedName = encodeURIComponent(row.name || '');
+    const isCaptain = localStorage.getItem('vbt_role') === 'captain';
+    return `
+        <article class="menu-source-item" draggable="true" ondragstart="handlePracticeMenuDragStart(event, '${escapeHtml(sourceType)}', ${Number(row.id || 0)}, decodeURIComponent('${encodedName}'))">
+            <div class="menu-source-item__main">
+                <div class="menu-source-item__title">${escapeHtml(row.name)}</div>
+                <div class="menu-source-item__meta">${escapeHtml((row.court_modes || []).join(' / ') || '-')} &middot; ${escapeHtml(String(row.people_count || '-'))} people &middot; ${escapeHtml((row.difficulty_levels || []).join(' / ') || '-')}</div>
+            </div>
+            <div class="menu-source-item__actions">
+                <span class="menu-source-item__badge">${escapeHtml(sourceLabel)}</span>
+                ${isCaptain ? `<button type="button" class="court-btn" onclick="addPracticeMenuItem('${sourceType}', ${Number(row.id || 0)}, decodeURIComponent('${encodedName}'), 'first_half')">+ 1st</button>` : ''}
+                ${isCaptain ? `<button type="button" class="court-btn" onclick="addPracticeMenuItem('${sourceType}', ${Number(row.id || 0)}, decodeURIComponent('${encodedName}'), 'second_half')">+ 2nd</button>` : ''}
+            </div>
+        </article>
+    `;
+}
+
+function renderPlanSources() {
+    const resultContainer = document.getElementById('menu-result');
+    if (!resultContainer) return;
+    const isCaptain = localStorage.getItem('vbt_role') === 'captain';
+
+    if (!menuState.rows.length) {
+        resultContainer.innerHTML = '<div class="menu-empty-state">Menu database not found. Please make sure the CSV export is available.</div>';
+        return;
+    }
+
+    const generated = menuState.generatedRows || [];
+    const matching = menuState.matchingRows || [];
+    if (!generated.length && !matching.length) {
+        resultContainer.innerHTML = '<div class="menu-empty-state">Generate a plan or show matching drills, then drag them into First Half / Second Half below.</div>';
+        return;
+    }
+
+    resultContainer.innerHTML = `
+        ${generated.length ? `
+            <div class="menu-result-summary">
+                <div>
+                    <div class="menu-result-summary__eyebrow">Generated Plan</div>
+                    <h4>Recommended Training Plan</h4>
+                    ${isCaptain ? `<p>${escapeHtml(String(generated.length))} drills ready to drag.</p>` : ''}
+                </div>
+            </div>
+            <div class="menu-source-grid">
+                ${generated.map((row) => createPracticeMenuSourceItem(row, 'Generated', 'generated')).join('')}
+            </div>
+        ` : ''}
+        ${matching.length ? `
+            <div class="menu-result-summary" style="margin-top:18px;">
+                <div>
+                    <div class="menu-result-summary__eyebrow">Matching Plan</div>
+                    <h4>All Matching Drills</h4>
+                    ${isCaptain ? `<p>${escapeHtml(String(matching.length))} drills available to drag.</p>` : ''}
+                </div>
+            </div>
+            <div class="menu-source-grid">
+                ${matching.map((row) => createPracticeMenuSourceItem(row, 'Match', 'match')).join('')}
+            </div>
+        ` : ''}
+    `;
+}
+
+function createPracticeMenuBoardItem(item, halfKey, index) {
+    const isCaptain = localStorage.getItem('vbt_role') === 'captain';
+    return `
+        <div class="practice-menu-item">
+            <span>${escapeHtml(item.name || 'Untitled Drill')}</span>
+            ${isCaptain ? `<button type="button" class="practice-menu-item__remove" onclick="removePracticeMenuItem('${halfKey}', ${index})">&times;</button>` : ''}
+        </div>
+    `;
+}
+
+function getNextPracticeInfo(weekdays) {
+    const normalized = (weekdays || []).map((value) => Number(value)).filter((value) => Number.isInteger(value) && value >= 0 && value <= 6);
+    if (!normalized.length) return { date: '', weekday: '' };
+    const today = new Date();
+    const currentDay = today.getDay();
+    let bestOffset = null;
+    let bestDay = null;
+    normalized.forEach((day) => {
+        let offset = (day - currentDay + 7) % 7;
+        if (bestOffset === null || offset < bestOffset) {
+            bestOffset = offset;
+            bestDay = day;
+        }
+    });
+    const nextDate = new Date(today);
+    nextDate.setDate(today.getDate() + (bestOffset || 0));
+    const yyyy = nextDate.getFullYear();
+    const mm = String(nextDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(nextDate.getDate()).padStart(2, '0');
+    return {
+        date: `${yyyy}-${mm}-${dd}`,
+        weekday: Number.isInteger(bestDay) ? PRACTICE_WEEKDAY_NAMES[bestDay] : ''
+    };
+}
+
+function renderPracticeWeekdayControls(weekdays) {
+    const isCaptain = localStorage.getItem('vbt_role') === 'captain';
+    if (!isCaptain) return '';
+    const selected = new Set((weekdays || []).map((value) => Number(value)));
+    const nextPractice = getNextPracticeInfo([...selected]);
+    const labels = [...selected].sort((a, b) => a - b).map((value) => PRACTICE_WEEKDAY_NAMES[value]).join(', ');
+    const controls = PRACTICE_WEEKDAY_NAMES.map((label, index) => `
+        <label class="court-weekday-option ${isCaptain ? '' : 'menu-weekday-option--readonly'}">
+            <input type="checkbox" data-practice-weekday="${index}" ${selected.has(index) ? 'checked' : ''} ${isCaptain ? '' : 'disabled'}>
+            ${label}
+        </label>
+    `).join('');
+    return `
+        <div class="practice-menu-board__controls">
+            <div class="court-weekday-filter practice-weekday-filter">
+                <span class="court-weekday-filter__label">Weekdays</span>
+                ${controls}
+            </div>
+        </div>
+    `;
+}
+
+function renderPracticeWeekdayCard() {
+    const container = document.getElementById('menu-practice-weekdays');
+    if (!container) return;
+    container.innerHTML = renderPracticeWeekdayControls(menuState.practiceMenu.weekdays || []);
+}
+
+function renderPracticeMenuBoard() {
+    const container = document.getElementById('menu-practice-board');
+    if (!container) return;
+    const firstHalf = menuState.practiceMenu.first_half || [];
+    const secondHalf = menuState.practiceMenu.second_half || [];
+    const updatedAt = menuState.practiceMenu.updated_at || '';
+    const weekdays = menuState.practiceMenu.weekdays || [];
+    const nextPractice = getNextPracticeInfo(weekdays);
+    const titleSuffix = nextPractice.date ? ` ${nextPractice.date.slice(5)}${nextPractice.weekday ? `(${nextPractice.weekday})` : ''}` : '';
+
+    container.innerHTML = `
+        <div class="practice-menu-board">
+            <div class="practice-menu-board__summary">
+                <h4>Practice Menu${escapeHtml(titleSuffix)}</h4>
+                <p>${updatedAt ? `Updated ${escapeHtml(updatedAt)}` : 'Build the practice menu below to publish it here for everyone.'}</p>
+            </div>
+            <div class="practice-menu-board__halves">
+                <section class="practice-menu-board__half">
+                    <h5>First Half</h5>
+                    <div class="practice-menu-board__list">
+                        ${firstHalf.length ? firstHalf.map((item, index) => createPracticeMenuBoardItem(item, 'first_half', index)).join('') : '<div class="menu-empty-state" style="margin-top:0;">No drills yet.</div>'}
+                    </div>
+                </section>
+                <section class="practice-menu-board__half">
+                    <h5>Second Half</h5>
+                    <div class="practice-menu-board__list">
+                        ${secondHalf.length ? secondHalf.map((item, index) => createPracticeMenuBoardItem(item, 'second_half', index)).join('') : '<div class="menu-empty-state" style="margin-top:0;">No drills yet.</div>'}
+                    </div>
+                </section>
+            </div>
+        </div>
+    `;
+    renderPracticeMenuDropZones();
+}
+
+function generateMenu() {
+    const filters = getMenuFiltersFromUI();
+    const filteredRows = getFilteredMenuRows();
+    const recommendedRows = pickRecommendedMenuRows(filteredRows, filters);
+    menuState.matchingRows = filteredRows;
+    menuState.generatedRows = recommendedRows;
+    renderPlanSources();
+}
+
+function showAllMenuMatches() {
+    const filteredRows = getFilteredMenuRows();
+    menuState.matchingRows = filteredRows;
+    renderPlanSources();
+}
+
+function resetMenuFilters() {
+    const playersInput = document.getElementById('menu-players');
+    const courtModeInput = document.getElementById('menu-court-mode');
+    const planSizeInput = document.getElementById('menu-plan-size');
+
+    if (playersInput) playersInput.value = 6;
+    if (courtModeInput) courtModeInput.value = '';
+    if (planSizeInput) planSizeInput.value = 5;
+
+    document.querySelectorAll('#menu input[type="checkbox"]').forEach((input) => {
+        input.checked = false;
+    });
+
+    generateMenu();
+}
+
+function toggleMenuEditor(forceState) {
+    const nextState = typeof forceState === 'boolean' ? forceState : !menuState.editorOpen;
+    menuState.editorOpen = nextState;
+    const panel = document.getElementById('menu-editor-panel');
+    const icon = document.getElementById('menu-editor-toggle-icon');
+    if (panel) panel.style.display = nextState ? 'block' : 'none';
+    if (icon) icon.textContent = nextState ? '▴' : '▾';
+}
+
+function renderPracticeMenuDropZoneItems(halfKey) {
+    const items = menuState.practiceMenu[halfKey] || [];
+    if (!items.length) {
+        return '<div class="menu-drop-zone__empty">Drag drills here or add your own.</div>';
+    }
+    return items.map((item, index) => `
+        <div class="menu-drop-zone__item" draggable="true" ondragstart="handlePracticeMenuExistingDragStart(event, '${halfKey}', ${index})">
+            <span>${escapeHtml(item.name || 'Untitled Drill')}</span>
+            <button type="button" onclick="removePracticeMenuItem('${halfKey}', ${index})">&times;</button>
+        </div>
+    `).join('');
+}
+
+function renderPracticeMenuDropZones() {
+    const firstZone = document.getElementById('menu-first-half-zone');
+    const secondZone = document.getElementById('menu-second-half-zone');
+    if (firstZone) firstZone.innerHTML = renderPracticeMenuDropZoneItems('first_half');
+    if (secondZone) secondZone.innerHTML = renderPracticeMenuDropZoneItems('second_half');
+}
+
+async function savePracticeMenu() {
+    await fetch('/api/practice_menu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(menuState.practiceMenu)
+    });
+}
+
+async function loadPracticeMenu() {
+    try {
+        const response = await fetch('/api/practice_menu');
+        const data = await response.json();
+        menuState.practiceMenu = {
+            first_half: Array.isArray(data.first_half) ? data.first_half : [],
+            second_half: Array.isArray(data.second_half) ? data.second_half : [],
+            weekdays: Array.isArray(data.weekdays) ? data.weekdays : [],
+            updated_at: data.updated_at || ''
+        };
+        renderPracticeMenuBoard();
+        renderPracticeWeekdayCard();
+    } catch (error) {
+        console.error('Failed to load practice menu', error);
+    }
+}
+
+async function addPracticeMenuItem(sourceType, sourceId, sourceName, halfKey) {
+    const item = {
+        source_type: sourceType,
+        source_id: sourceId || null,
+        name: sourceName || 'Untitled Drill'
+    };
+    menuState.practiceMenu[halfKey] = [...(menuState.practiceMenu[halfKey] || []), item];
+    await savePracticeMenu();
+    await loadPracticeMenu();
+}
+
+async function addManualPracticeMenuItem(halfKey) {
+    const input = document.getElementById(halfKey === 'first_half' ? 'menu-first-half-manual' : 'menu-second-half-manual');
+    const value = input?.value?.trim();
+    if (!value) return;
+    await addPracticeMenuItem('manual', null, value, halfKey);
+    if (input) input.value = '';
+}
+
+async function removePracticeMenuItem(halfKey, index) {
+    if (localStorage.getItem('vbt_role') !== 'captain') return;
+    const nextItems = [...(menuState.practiceMenu[halfKey] || [])];
+    nextItems.splice(index, 1);
+    menuState.practiceMenu[halfKey] = nextItems;
+    await savePracticeMenu();
+    await loadPracticeMenu();
+}
+
+async function updatePracticeWeekdays() {
+    const selected = Array.from(document.querySelectorAll('input[data-practice-weekday]:checked')).map((input) => Number(input.dataset.practiceWeekday));
+    menuState.practiceMenu.weekdays = selected;
+    await savePracticeMenu();
+    await loadPracticeMenu();
+}
+
+function handlePracticeMenuDragStart(event, sourceType, sourceId, sourceName) {
+    event.dataTransfer.setData('text/plain', JSON.stringify({
+        drag_kind: 'source',
+        source_type: sourceType,
+        source_id: sourceId || null,
+        name: sourceName || 'Untitled Drill'
+    }));
+}
+
+function handlePracticeMenuExistingDragStart(event, halfKey, index) {
+    const item = (menuState.practiceMenu[halfKey] || [])[index];
+    if (!item) return;
+    event.dataTransfer.setData('text/plain', JSON.stringify({
+        drag_kind: 'existing',
+        from_half: halfKey,
+        from_index: index,
+        item
+    }));
+}
+
+function handlePracticeMenuDragOver(event) {
+    event.preventDefault();
+}
+
+async function handlePracticeMenuDrop(event, halfKey) {
+    event.preventDefault();
+    try {
+        const payload = JSON.parse(event.dataTransfer.getData('text/plain'));
+        if (payload.drag_kind === 'existing') {
+            const fromHalf = payload.from_half;
+            const fromIndex = Number(payload.from_index);
+            const sourceItems = [...(menuState.practiceMenu[fromHalf] || [])];
+            const [movedItem] = sourceItems.splice(fromIndex, 1);
+            if (!movedItem) return;
+            menuState.practiceMenu[fromHalf] = sourceItems;
+            menuState.practiceMenu[halfKey] = [...(menuState.practiceMenu[halfKey] || []), movedItem];
+            await savePracticeMenu();
+            await loadPracticeMenu();
+            return;
+        }
+        await addPracticeMenuItem(payload.source_type, payload.source_id, payload.name, halfKey);
+    } catch (error) {
+        console.error('Failed to drop practice menu item', error);
+    }
+}
+
+function initPracticeWeekdayListeners() {
+    document.addEventListener('change', async (event) => {
+        const target = event.target;
+        if (target && target.matches('input[data-practice-weekday]')) {
+            await updatePracticeWeekdays();
+        }
+    });
+}
+
+function menuValuesToText(values) {
+    return (values || []).join(', ');
+}
+
+function fillMenuEditor(row) {
+    menuState.editingId = row?.id || null;
+    const setValue = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.value = value ?? '';
+    };
+    setValue('menu-edit-id', row?.id || '');
+    setValue('menu-edit-name', row?.name || '');
+    setValue('menu-edit-players', row?.people_count || 2);
+    setValue('menu-edit-focuses', menuValuesToText(row?.focuses));
+    setValue('menu-edit-court-modes', menuValuesToText(row?.court_modes));
+    setValue('menu-edit-complexities', menuValuesToText(row?.complexities));
+    setValue('menu-edit-fatigue', menuValuesToText(row?.fatigue_levels));
+    setValue('menu-edit-difficulty', menuValuesToText(row?.difficulty_levels));
+}
+
+function resetMenuEditor() {
+    fillMenuEditor(null);
+}
+
+function startCreateMenuItem() {
+    resetMenuEditor();
+    const nameInput = document.getElementById('menu-edit-name');
+    if (nameInput) nameInput.focus();
+}
+
+function renderMenuEditorList() {
+    const list = document.getElementById('menu-editor-list');
+    if (!list) return;
+    if (!menuState.rows.length) {
+        list.innerHTML = '<div class="menu-empty-state" style="margin-top:0;">No drills yet.</div>';
+        return;
+    }
+    list.innerHTML = sortMenuRows(menuState.rows).map((row) => `
+        <button type="button" class="menu-editor-item ${menuState.editingId === row.id ? 'active' : ''}" onclick="fillMenuEditorById(${row.id})">
+            <strong>${escapeHtml(row.name)}</strong>
+            <span>${escapeHtml((row.court_modes || []).join(' / ') || '-')} &middot; ${escapeHtml(String(row.people_count || '-'))} people &middot; ${escapeHtml((row.difficulty_levels || []).join(' / ') || '-')}</span>
+        </button>
+    `).join('');
+}
+
+function fillMenuEditorById(itemId) {
+    const row = menuState.rows.find((item) => item.id === itemId);
+    if (!row) return;
+    fillMenuEditor(row);
+    renderMenuEditorList();
+}
+
+function collectMenuEditorPayload() {
+    return {
+        name: document.getElementById('menu-edit-name')?.value || '',
+        people_count: document.getElementById('menu-edit-players')?.value || 0,
+        focuses: document.getElementById('menu-edit-focuses')?.value || '',
+        court_modes: document.getElementById('menu-edit-court-modes')?.value || '',
+        complexities: document.getElementById('menu-edit-complexities')?.value || '',
+        fatigue_levels: document.getElementById('menu-edit-fatigue')?.value || '',
+        difficulty_levels: document.getElementById('menu-edit-difficulty')?.value || ''
+    };
+}
+
+async function refreshMenuData(preserveEditor = true) {
+    const response = await fetch('/api/menu_data');
+    const data = await response.json();
+    menuState.rows = Array.isArray(data.rows) ? data.rows : [];
+    menuState.filters = data.filters || menuState.filters;
+    renderMenuFilterOptions(menuState.filters);
+    renderMenuEditorList();
+    if (preserveEditor && menuState.editingId) {
+        const current = menuState.rows.find((item) => item.id === menuState.editingId);
+        if (current) fillMenuEditor(current);
+        else resetMenuEditor();
+    }
+    return data;
+}
+
+async function saveMenuItem() {
+    const payload = collectMenuEditorPayload();
+    const itemId = document.getElementById('menu-edit-id')?.value;
+    const method = itemId ? 'PUT' : 'POST';
+    const url = itemId ? `/api/menu_data/${itemId}` : '/api/menu_data';
+
+    try {
+        const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            alert(data.error || 'Failed to save menu item.');
+            return;
+        }
+        menuState.editingId = data.item?.id || null;
+        await refreshMenuData(true);
+        generateMenu();
+    } catch (error) {
+        console.error('Failed to save menu item', error);
+        alert('Failed to save menu item.');
+    }
+}
+
+async function deleteMenuItem() {
+    const itemId = document.getElementById('menu-edit-id')?.value;
+    if (!itemId) {
+        alert('Please select a drill to delete.');
+        return;
+    }
+    if (!confirm('Delete this drill from the menu database?')) return;
+
+    try {
+        const response = await fetch(`/api/menu_data/${itemId}`, { method: 'DELETE' });
+        const data = await response.json();
+        if (!response.ok) {
+            alert(data.error || 'Failed to delete menu item.');
+            return;
+        }
+        resetMenuEditor();
+        await refreshMenuData(false);
+        generateMenu();
+    } catch (error) {
+        console.error('Failed to delete menu item', error);
+        alert('Failed to delete menu item.');
+    }
+}
+
+async function initTrainingMenu() {
+    const resultContainer = document.getElementById('menu-result');
+    await loadPracticeMenu();
+    if (resultContainer) {
+        resultContainer.innerHTML = '<div class="menu-empty-state">Loading menu database...</div>';
+    }
+
+    try {
+        const data = await refreshMenuData(false);
+        resetMenuEditor();
+        toggleMenuEditor(false);
+        initMenuFilterAutoRefresh();
+
+        if (!menuState.rows.length && resultContainer) {
+            resultContainer.innerHTML = '<div class="menu-empty-state">Menu database not found. Please make sure the CSV export is available.</div>';
+            return;
+        }
+
+        generateMenu();
+    } catch (error) {
+        console.error('Failed to load training menu', error);
+        if (resultContainer) {
+            resultContainer.innerHTML = '<div class="menu-empty-state">Failed to load menu database.</div>';
+        }
+    }
+}
+
+function runTask(taskName) {
+    console.log(`Task triggered: ${taskName}`);
+    alert(`System Notice: Executing "${taskName}".\n(Currently UI only.)`);
+}
+
+function addAdvancedRecord() {
+    alert('Record saved successfully.');
+}
+// ==========================================
+// 6. Court Status & Scraper Management (融合升級版)
+// ==========================================
+
+function getMonthData(offsetMonth = 0) {
+    const date = new Date();
+    date.setMonth(date.getMonth() + offsetMonth);
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    return { id: `${yyyy}-${mm}`, displayNumber: date.getMonth() + 1, year: yyyy, label: `${yyyy}-${mm}` };
+}
+
+const COURT_WEEKDAY_KEY = 'vbt_court_weekdays';
+const COURT_WEEKDAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const courtStatusCache = {};
+const courtEditState = {
+    active: false,
+    monthId: null,
+    draftRows: []
+};
+let activeCourtTab = 'current';
+
+function getDefaultCourtWeekdays() {
+    return [0, 1, 2, 3, 4, 5, 6];
+}
+
+function getSelectedCourtWeekdays() {
+    const checkboxes = document.querySelectorAll('[data-court-weekday]');
+    if (checkboxes.length > 0) {
+        const selected = Array.from(checkboxes)
+            .filter(checkbox => checkbox.checked)
+            .map(checkbox => Number(checkbox.dataset.courtWeekday));
+        return selected.length > 0 ? selected : getDefaultCourtWeekdays();
+    }
+
+    try {
+        const saved = JSON.parse(localStorage.getItem(COURT_WEEKDAY_KEY) || '[]');
+        if (Array.isArray(saved) && saved.length > 0) {
+            return saved.map(Number);
+        }
+    } catch (error) {
+        console.warn('Failed to read saved court weekdays', error);
+    }
+
+    return getDefaultCourtWeekdays();
+}
+
+function initCourtWeekdayFilters() {
+    const checkboxes = document.querySelectorAll('[data-court-weekday]');
+    if (checkboxes.length === 0) return;
+
+    let selectedWeekdays = getDefaultCourtWeekdays();
+    try {
+        const saved = JSON.parse(localStorage.getItem(COURT_WEEKDAY_KEY) || '[]');
+        if (Array.isArray(saved) && saved.length > 0) {
+            selectedWeekdays = saved.map(Number);
+        }
+    } catch (error) {
+        console.warn('Failed to parse saved court weekdays', error);
+    }
+
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = selectedWeekdays.includes(Number(checkbox.dataset.courtWeekday));
+        checkbox.addEventListener('change', () => {
+            const selected = Array.from(checkboxes)
+                .filter(item => item.checked)
+                .map(item => Number(item.dataset.courtWeekday));
+
+            if (selected.length === 0) {
+                checkbox.checked = true;
+                return;
+            }
+
+            localStorage.setItem(COURT_WEEKDAY_KEY, JSON.stringify(selected));
+            loadCourtStatus();
+        });
+    });
+}
+
+function normalizeCourtDateValue(dateValue) {
+    if (!dateValue) return '';
+    const match = String(dateValue).match(/\d{4}-\d{2}-\d{2}/);
+    return match ? match[0] : '';
+}
+
+function formatCourtDateLabel(dateObj) {
+    const yyyy = dateObj.getFullYear();
+    const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const dd = String(dateObj.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} (${COURT_WEEKDAY_NAMES[dateObj.getDay()]})`;
+}
+
+function buildCourtCalendarRows(monthId, data) {
+    return buildCourtCalendarRowsWithWeekdays(monthId, data, getSelectedCourtWeekdays());
+}
+
+function buildCourtCalendarRowsWithWeekdays(monthId, data, weekdays) {
+    const selectedWeekdays = new Set(weekdays);
+    const [year, month] = monthId.split('-').map(Number);
+    const lastDay = new Date(year, month, 0).getDate();
+    const dataMap = new Map();
+
+    (Array.isArray(data) ? data : []).forEach(row => {
+        const normalizedDate = normalizeCourtDateValue(row.date);
+        if (!normalizedDate) return;
+        dataMap.set(normalizedDate, row);
+    });
+
+    const rows = [];
+    for (let day = 1; day <= lastDay; day++) {
+        const dateObj = new Date(year, month - 1, day);
+        if (!selectedWeekdays.has(dateObj.getDay())) continue;
+
+        const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const existingRow = dataMap.get(dateKey);
+
+        rows.push({
+            date: formatCourtDateLabel(dateObj),
+            slot1: existingRow ? existingRow.slot1 : null,
+            slot2: existingRow ? existingRow.slot2 : null
+        });
+    }
+
+    return rows;
+}
+
+function cloneCourtRows(rows) {
+    return JSON.parse(JSON.stringify(Array.isArray(rows) ? rows : []));
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function simplifyCourtName(value) {
+    return String(value ?? '').replace(/Volleyball\s+Court/gi, 'Court').trim();
+}
+
+function normalizeCourtSlot(slotData) {
+    if (!slotData) return null;
+
+    const line1 = simplifyCourtName((slotData.line1 ?? slotData.court ?? '').toString().trim());
+    const line2 = (slotData.line2 ?? slotData.dept ?? '').toString().trim();
+    const color = slotData.color === 'blue' ? 'blue' : slotData.color === 'yellow' ? 'yellow' : 'none';
+
+    if (!line1 && !line2 && color === 'none') return null;
+
+    return { line1, line2, color };
+}
+
+function normalizeCourtRow(row) {
+    return {
+        date: row.date,
+        slot1: normalizeCourtSlot(row.slot1),
+        slot2: normalizeCourtSlot(row.slot2)
+    };
+}
+
+function getCourtMonthDataById(monthId) {
+    const now = getMonthData(0);
+    if (now.id === monthId) return now;
+
+    const next = getMonthData(1);
+    if (next.id === monthId) return next;
+
+    const [year, month] = monthId.split('-').map(Number);
+    return { id: monthId, displayNumber: month, year };
+}
+
+function getActiveCourtMonthId() {
+    return activeCourtTab === 'next' ? getMonthData(1).id : getMonthData(0).id;
+}
+
+function updateCourtEditButton() {
+    const editBtn = document.getElementById('edit-table-btn');
+    if (!editBtn) return;
+    if (activeCourtTab === 'saved') {
+        editBtn.style.display = 'none';
+        return;
+    }
+    editBtn.style.display = 'inline-flex';
+
+    const isEditingActiveTab = courtEditState.active && courtEditState.monthId === getActiveCourtMonthId();
+    editBtn.innerHTML = isEditingActiveTab
+        ? '<i class="fas fa-times"></i> Cancel Edit'
+        : '<i class="fas fa-edit"></i> Edit Table';
+}
+
+function getCourtRowsForMonth(monthId, visibleOnly = true) {
+    const cache = courtStatusCache[monthId];
+    if (!cache) return [];
+    return visibleOnly ? cache.visibleRows : cache.allRows;
+}
+
+function getCourtDraftRows(monthId, visibleOnly = true) {
+    const sourceRows = courtEditState.active && courtEditState.monthId === monthId
+        ? courtEditState.draftRows
+        : getCourtRowsForMonth(monthId, false);
+
+    if (!visibleOnly) return sourceRows;
+
+    const selectedWeekdays = new Set(getSelectedCourtWeekdays());
+    return sourceRows.filter(row => {
+        const dateValue = normalizeCourtDateValue(row.date);
+        if (!dateValue) return true;
+        return selectedWeekdays.has(new Date(`${dateValue}T00:00:00`).getDay());
+    });
+}
+
+function setCourtCache(monthId, rows) {
+    const normalizedRows = rows.map(normalizeCourtRow);
+    courtStatusCache[monthId] = {
+        allRows: normalizedRows,
+        visibleRows: buildCourtCalendarRowsWithWeekdays(monthId, normalizedRows, getSelectedCourtWeekdays())
+    };
+}
+
+function refreshCourtTableByMonth(monthId) {
+    const current = getMonthData(0);
+    const next = getMonthData(1);
+
+    if (monthId === current.id) {
+        renderCourtTable(current.id, 'display-current');
+    } else if (monthId === next.id) {
+        renderCourtTable(next.id, 'display-next');
+    }
+}
+
+function getCourtCellClass(slotData) {
+    if (!slotData) return 'court-empty';
+    if (slotData.color === 'blue') return 'court-booked court-booked--blue';
+    if (slotData.color === 'yellow') return 'court-booked court-booked--yellow';
+    return 'court-empty';
+}
+
+function renderCourtSlotDisplay(slotData, isAuth) {
+    const normalized = normalizeCourtSlot(slotData);
+    if (!normalized) return `<td class="court-empty">-</td>`;
+
+    let content = `<div class="slot-line1">${escapeHtml(normalized.line1)}</div>`;
+    const showLine2 = isAuth && normalized.line2;
+    if (showLine2) {
+        content += `<div class="dept-name slot-line2">${escapeHtml(normalized.line2)}</div>`;
+    }
+
+    return `<td class="${getCourtCellClass(normalized)}">${content}</td>`;
+}
+
+async function loadCourtStatus() {
+    const current = getMonthData(0);
+    const next = getMonthData(1);
+
+    const labelCur = document.getElementById('label-current-month');
+    const labelNext = document.getElementById('label-next-month');
+    if (labelCur) labelCur.innerText = current.label;
+    if (labelNext) labelNext.innerText = next.label;
+
+    await fetchAndDisplayCourt(current.id, 'display-current');
+    await fetchAndDisplayCourt(next.id, 'display-next');
+    updateCourtEditButton();
+}
+
+async function deleteMonthRecords(monthId) {
+    if (!monthId) return;
+    if (!confirm(`Delete all saved records for ${monthId}? This removes it from court status, bid records, and all history analysis.`)) return;
+
+    try {
+        const response = await fetch(`/api/court_status/${monthId}`, { method: 'DELETE' });
+        const data = await response.json();
+        if (!response.ok) {
+            alert(data.error || 'Failed to delete saved month.');
+            return;
+        }
+
+        await loadCourtStatus();
+        if (typeof loadLotteryDashboard === 'function') {
+            await loadLotteryDashboard();
+        }
+        if (typeof loadLotteryMonthHistory === 'function') {
+            await loadLotteryMonthHistory();
+        }
+    } catch (error) {
+        console.error('Failed to delete saved month', error);
+        alert('Failed to delete saved month.');
+    }
+}
+
+async function deleteCourtOnlyMonth(monthId) {
+    if (!monthId) return;
+    if (!confirm(`Delete court status data for ${monthId}? Bid records will be kept.`)) return;
+    try {
+        const response = await fetch(`/api/court_status/${monthId}?scope=court`, { method: 'DELETE' });
+        const data = await response.json();
+        if (!response.ok) {
+            alert(data.error || 'Failed to delete court status data.');
+            return;
+        }
+        await loadCourtStatus();
+        if (typeof loadLotteryDashboard === 'function') await loadLotteryDashboard();
+        if (typeof loadLotteryMonthHistory === 'function') await loadLotteryMonthHistory();
+    } catch (error) {
+        console.error('Failed to delete court-only month', error);
+        alert('Failed to delete court status data.');
+    }
+}
+
+async function deleteBidOnlyMonth(monthId) {
+    if (!monthId) return;
+    if (!confirm(`Delete bid data for ${monthId}? Court status will be kept.`)) return;
+    try {
+        const response = await fetch(`/api/lottery_bids/${monthId}`, { method: 'DELETE' });
+        const data = await response.json();
+        if (!response.ok) {
+            alert(data.error || 'Failed to delete bid data.');
+            return;
+        }
+        await loadCourtStatus();
+        if (typeof loadLotteryDashboard === 'function') await loadLotteryDashboard();
+        if (typeof loadLotteryMonthHistory === 'function') await loadLotteryMonthHistory();
+    } catch (error) {
+        console.error('Failed to delete bid-only month', error);
+        alert('Failed to delete bid data.');
+    }
+}
+
+function transformCourtData(rawData) {
+    if (!Array.isArray(rawData)) return [];
+    if (rawData.length === 0) return [];
+
+    if (rawData[0].slot1 !== undefined && typeof rawData[0].slot1 === 'object') {
+        return rawData.map(normalizeCourtRow);
+    }
+
+    if ('slot1_court' in rawData[0] || 'slot1_name' in rawData[0]) {
+        return rawData.map(row => ({
+            date: row.date || row.Date,
+            slot1: normalizeCourtSlot((row.slot1_court || row.slot1_name) ? {
+                line1: row.slot1_court || row.slot1_name,
+                line2: row.slot1_dept || '',
+                color: 'yellow'
+            } : null),
+            slot2: normalizeCourtSlot((row.slot2_court || row.slot2_name) ? {
+                line1: row.slot2_court || row.slot2_name,
+                line2: row.slot2_dept || '',
+                color: 'yellow'
+            } : null)
+        }));
+    }
+
+    const grouped = {};
+    rawData.forEach(item => {
+        const d = item.date || item.Date;
+        if (!d) return;
+
+        if (!grouped[d]) {
+            grouped[d] = { date: d, slot1: null, slot2: null };
+        }
+
+        const time = (item.time || item.Time || '').toString();
+        const court = item.court || item.Court || item.court_name || '';
+        const dept = item.dept || item.Dept || item.department || item['Booked By'] || '';
+        if (!court) return;
+
+        const courtInfo = normalizeCourtSlot({
+            line1: court,
+            line2: dept,
+            color: 'yellow'
+        });
+
+        if (time.includes('18') || time.includes('19')) {
+            grouped[d].slot1 = courtInfo;
+        } else if (time.includes('20') || time.includes('21')) {
+            grouped[d].slot2 = courtInfo;
+        }
+    });
+
+    return Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+async function fetchAndDisplayCourt(monthId, elementId) {
+    try {
+        const response = await fetch(`/api/court_status/${monthId}`);
+        const responseData = await response.json();
+        let rawData = responseData.drawresult || responseData.data || responseData;
+
+        if (rawData.content && typeof rawData.content === 'string') {
+            try { rawData = JSON.parse(rawData.content); } catch (e) {}
+        } else if (typeof rawData === 'string') {
+            try { rawData = JSON.parse(rawData); } catch (e) {}
+        }
+
+        const formattedData = transformCourtData(rawData);
+        const completedData = buildCourtCalendarRowsWithWeekdays(monthId, formattedData, getDefaultCourtWeekdays());
+        setCourtCache(monthId, completedData);
+        renderCourtTable(monthId, elementId);
+    } catch (error) {
+        console.error(`Failed to load court status for ${monthId}`, error);
+        const displayDiv = document.getElementById(elementId);
+        if (displayDiv) displayDiv.innerHTML = '<p style="color:red; text-align:center;">Failed to load data.</p>';
+    }
+}
+
+function renderCourtTable(monthId, containerId) {
+    const role = localStorage.getItem('vbt_role');
+    const isAuth = role === 'member' || role === 'captain';
+    const isEditing = courtEditState.active && courtEditState.monthId === monthId;
+    const tableData = getCourtDraftRows(monthId, true);
+    const monthData = getCourtMonthDataById(monthId);
+
+    let html = '';
+
+    if (isAuth) {
+        html += `
+            <div class="court-controls">
+                ${isEditing ? `
+                    <button class="court-btn" onclick="saveCourtStatus()">Save Table</button>
+                    <button class="court-btn" onclick="toggleEditMode(false)">Cancel Edit</button>
+                ` : `
+                    <button class="court-btn" onclick="toggleNames()">Hide / Show Names</button>
+                    <button class="court-btn" onclick="downloadCourtTableAsPng('${monthId}')">Download as PNG</button>
+                `}
+            </div>
+        `;
+    }
+
+    html += `
+        <div class="court-dashboard-container" data-court-month="${monthId}">
+            <div class="court-export-title">Court Status ${monthData.id}</div>
+            <table class="court-table">
+                <thead>
+                    <tr>
+                        <th>Date / Weekday</th>
+                        <th>18:00 - 20:00</th>
+                        <th>20:00 - 22:00</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    if (tableData.length === 0) {
+        html += `<tr><td colspan="3" style="color:#999; padding: 20px;">No court data.</td></tr>`;
+    } else {
+        tableData.forEach((row) => {
+            html += `<tr><td><strong>${row.date}</strong></td>`;
+            html += isEditing
+                ? renderCourtSlotEditor(row.slot1, row.date, 'slot1')
+                : renderCourtSlotDisplay(row.slot1, isAuth);
+            html += isEditing
+                ? renderCourtSlotEditor(row.slot2, row.date, 'slot2')
+                : renderCourtSlotDisplay(row.slot2, isAuth);
+            html += `</tr>`;
+        });
+    }
+
+    html += `</tbody></table></div>`;
+
+    const displayDiv = document.getElementById(containerId);
+    if (displayDiv) displayDiv.innerHTML = html;
+}
+
+function toggleNames() {
+    const names = document.querySelectorAll('.slot-line2');
+    names.forEach(name => {
+        name.style.display = name.style.display === 'none' ? 'block' : 'none';
+    });
+}
+
+function switchCourtTab(tabType) {
+    activeCourtTab = tabType;
+    document.getElementById('tab-current').classList.remove('active');
+    document.getElementById('tab-next').classList.remove('active');
+    document.getElementById(`tab-${tabType}`).classList.add('active');
+
+    document.getElementById('display-current').style.display = tabType === 'current' ? 'block' : 'none';
+    document.getElementById('display-next').style.display = tabType === 'next' ? 'block' : 'none';
+    updateCourtEditButton();
+}
+
+function toggleEditMode(forceState) {
+    const monthId = getActiveCourtMonthId();
+    const shouldEnable = typeof forceState === 'boolean'
+        ? forceState
+        : !(courtEditState.active && courtEditState.monthId === monthId);
+
+    if (shouldEnable) {
+        courtEditState.active = true;
+        courtEditState.monthId = monthId;
+        courtEditState.draftRows = cloneCourtRows(getCourtRowsForMonth(monthId, false));
+    } else {
+        courtEditState.active = false;
+        courtEditState.monthId = null;
+        courtEditState.draftRows = [];
+    }
+
+    refreshCourtTableByMonth(monthId);
+    updateCourtEditButton();
+}
+
+async function saveCourtStatus() {
+    if (!courtEditState.active || !courtEditState.monthId) return;
+
+    const monthId = courtEditState.monthId;
+    const sanitizedRows = courtEditState.draftRows.map(normalizeCourtRow);
+
+    try {
+        const response = await fetch('/api/court_status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                month_id: monthId,
+                content: JSON.stringify(sanitizedRows)
+            })
+        });
+
+        if (response.ok) {
+            setCourtCache(monthId, sanitizedRows);
+            courtEditState.active = false;
+            courtEditState.monthId = null;
+            courtEditState.draftRows = [];
+            refreshCourtTableByMonth(monthId);
+            updateCourtEditButton();
+            alert(`Court status for ${monthId} saved successfully.`);
+        }
+    } catch (error) {
+        console.error('Error saving court status', error);
+    }
+}
+
+function updateCourtCell(rowDate, slotKey, field, value) {
+    if (!courtEditState.active) return;
+
+    const row = courtEditState.draftRows.find(item => item.date === rowDate);
+    if (!row) return;
+
+    const currentSlot = normalizeCourtSlot(row[slotKey]) || {
+        line1: '',
+        line2: '',
+        color: 'none'
+    };
+
+    currentSlot[field] = value;
+    row[slotKey] = normalizeCourtSlot(currentSlot);
+}
+
+function renderCourtSlotEditor(slotData, rowDate, slotKey) {
+    const normalized = normalizeCourtSlot(slotData) || { line1: '', line2: '', color: 'none' };
+
+    return `
+        <td class="${getCourtCellClass(normalized)} court-edit-cell">
+            <div class="court-edit-field">
+                <label>Color</label>
+                <select onchange="updateCourtCell('${rowDate}', '${slotKey}', 'color', this.value)">
+                    <option value="none" ${normalized.color === 'none' ? 'selected' : ''}>None</option>
+                    <option value="yellow" ${normalized.color === 'yellow' ? 'selected' : ''}>Yellow</option>
+                    <option value="blue" ${normalized.color === 'blue' ? 'selected' : ''}>Blue</option>
+                </select>
+            </div>
+            <div class="court-edit-field">
+                <label>Line 1</label>
+                <input type="text" value="${escapeHtml(normalized.line1)}" placeholder="Court 4" oninput="updateCourtCell('${rowDate}', '${slotKey}', 'line1', this.value)">
+            </div>
+            <div class="court-edit-field">
+                <label>Line 2</label>
+                <input type="text" value="${escapeHtml(normalized.line2)}" placeholder="Department or note" oninput="updateCourtCell('${rowDate}', '${slotKey}', 'line2', this.value)">
+            </div>
+        </td>
+    `;
+}
+
+async function downloadCourtTableAsPng(monthId) {
+    const target = document.querySelector(`.court-dashboard-container[data-court-month="${monthId}"]`);
+    if (!target) return;
+
+    if (typeof html2canvas !== 'function') {
+        alert('Download as PNG requires html2canvas to be loaded.');
+        return;
+    }
+
+    try {
+        const canvas = await html2canvas(target, {
+            backgroundColor: null,
+            scale: Math.max(window.devicePixelRatio || 1, 2),
+            useCORS: true
+        });
+
+        const link = document.createElement('a');
+        link.href = canvas.toDataURL('image/png');
+        link.download = `court-status-${monthId}.png`;
+        link.click();
+    } catch (error) {
+        console.error('Failed to export court table as PNG', error);
+        alert('PNG export failed. Please try again.');
+    }
+}
+
+async function executeScraper(buttonEl) {
+    const startEl = document.getElementById('config-start');
+    const endEl = document.getElementById('config-end');
+    const ignoreEl = document.getElementById('config-ignore-res');
+    const swapInEl = document.getElementById('config-swap-in');
+    const swapOutEl = document.getElementById('config-swap-out');
+
+    const startDate = startEl ? startEl.value : '';
+    const endDate = endEl ? endEl.value : '';
+    const ignoreRes = ignoreEl ? ignoreEl.checked : false;
+    const monthId = startDate ? startDate.substring(0, 7) : '';
+
+    const swapInRaw = swapInEl ? swapInEl.value : '';
+    const swapOutRaw = swapOutEl ? swapOutEl.value : '';
+    const swapIn = swapInRaw ? swapInRaw.split(',').map(s => s.trim()) : [];
+    const swapOut = swapOutRaw ? swapOutRaw.split(',').map(s => s.trim()) : [];
+
+    if (!startDate || !endDate) {
+        alert('Please select both start and end dates.');
+        return;
+    }
+
+    if (!confirm(`Run scraper for ${startDate} to ${endDate}?`)) return;
+
+    const btn = buttonEl && buttonEl.tagName === 'BUTTON' ? buttonEl : null;
+    const labelEl = btn ? btn.querySelector('.scraper-btn-label') : null;
+    const originalText = labelEl ? labelEl.innerText : '執行爬蟲';
+    if (btn) {
+        if (labelEl) labelEl.innerText = '爬取中';
+        btn.disabled = true;
+    }
+
+    try {
+        const response = await fetch('/api/trigger_scrape', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                month_id: monthId,
+                start_date: startDate,
+                end_date: endDate,
+                ignore_reservation: ignoreRes,
+                swap_in: swapIn,
+                swap_out: swapOut
+            })
+        });
+
+        await response.json();
+        await pollScrapeStatus(monthId);
+    } catch (error) {
+        console.error('Error triggering scraper', error);
+        alert('Scraper failed. Please check the console.');
+    } finally {
+        if (btn) {
+            if (labelEl) labelEl.innerText = originalText;
+            btn.disabled = false;
+        }
+    }
+}
+
+async function pollScrapeStatus(targetMonth, maxAttempts = 20) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        try {
+            const response = await fetch('/api/scrape_status');
+            const data = await response.json();
+
+            if (data.target_month && targetMonth && data.target_month !== targetMonth) {
+                continue;
+            }
+
+            if (data.status === 'error') {
+                alert(data.message || 'System denied access. Please log in to the NTU venue system, then try scraping again.');
+                return;
+            }
+
+            if (data.status === 'success') {
+                await loadCourtStatus();
+                return;
+            }
+        } catch (error) {
+            console.error('Error polling scrape status', error);
+            return;
+        }
+    }
+}
+
+function fillScrapeDateRange(monthOffset) {
+    const today = new Date();
+    const rangeStart = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+    const rangeEnd = new Date(today.getFullYear(), today.getMonth() + monthOffset + 1, 0);
+
+    const formatDate = (date) => {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    };
+
+    document.getElementById('config-start').value = formatDate(rangeStart);
+    document.getElementById('config-end').value = formatDate(rangeEnd);
+}
+
+function scrapeThisMonth() {
+    fillScrapeDateRange(0);
+}
+
+function scrapeNextMonth() {
+    fillScrapeDateRange(1);
+}
+
+
+const LOTTERY_WEEKDAY_KEY = 'vbt_lottery_weekdays';
+const PROBABILITY_WEEKDAY_KEY = 'vbt_probability_weekdays';
+const STRATEGY_WEEKDAY_KEY = 'vbt_strategy_weekdays';
+const PROBABILITY_COURT_KEY = 'vbt_probability_courts';
+const STRATEGY_COURT_KEY = 'vbt_strategy_courts';
+const LOTTERY_COURTS = ['Court 4', 'Court 5', 'Court 6', 'Court 7'];
+const LOTTERY_WEEKDAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const lotteryBidsCache = {};
+const lotteryEditState = {
+    active: false,
+    monthId: null,
+    draftRows: []
+};
+let activeLotteryTab = 'current';
+let activeProbabilityTab = 'selected';
+let activeStrategyTab = 'selected';
+let lotterySelectedMonthId = getMonthData(0).id;
+
+function initCheckboxFilter(selector, storageKey, defaultValues, valueGetter, onChange) {
+    const checkboxes = document.querySelectorAll(selector);
+    if (checkboxes.length === 0) return;
+
+    let selectedValues = defaultValues;
+    try {
+        const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        if (Array.isArray(saved) && saved.length > 0) {
+            selectedValues = saved;
+        }
+    } catch (error) {
+        console.warn(`Failed to parse ${storageKey}`, error);
+    }
+
+    checkboxes.forEach((checkbox) => {
+        const value = valueGetter(checkbox);
+        checkbox.checked = selectedValues.includes(value);
+        checkbox.addEventListener('change', () => {
+            const selected = Array.from(checkboxes)
+                .filter((item) => item.checked)
+                .map((item) => valueGetter(item));
+
+            if (selected.length === 0) {
+                checkbox.checked = true;
+                return;
+            }
+
+            localStorage.setItem(storageKey, JSON.stringify(selected));
+            onChange();
+        });
+    });
+}
+
+function getStoredCheckboxValues(selector, storageKey, defaultValues, valueGetter) {
+    const checkboxes = document.querySelectorAll(selector);
+    if (checkboxes.length > 0) {
+        const selected = Array.from(checkboxes)
+            .filter((checkbox) => checkbox.checked)
+            .map((checkbox) => valueGetter(checkbox));
+        return selected.length > 0 ? selected : defaultValues;
+    }
+
+    try {
+        const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        if (Array.isArray(saved) && saved.length > 0) {
+            return saved;
+        }
+    } catch (error) {
+        console.warn(`Failed to read ${storageKey}`, error);
+    }
+
+    return defaultValues;
+}
+
+function getDefaultLotteryWeekdays() {
+    return [0, 1, 2, 3, 4, 5, 6];
+}
+
+function getDefaultStrategyWeekdays() {
+    return [1, 3];
+}
+
+function getSelectedLotteryWeekdays() {
+    return getStoredCheckboxValues('[data-lottery-weekday]', LOTTERY_WEEKDAY_KEY, getDefaultLotteryWeekdays(), (checkbox) => Number(checkbox.dataset.lotteryWeekday));
+}
+
+function getSelectedProbabilityWeekdays() {
+    return getStoredCheckboxValues('[data-probability-weekday]', PROBABILITY_WEEKDAY_KEY, getDefaultLotteryWeekdays(), (checkbox) => Number(checkbox.dataset.probabilityWeekday));
+}
+
+function getSelectedStrategyWeekdays() {
+    return getStoredCheckboxValues('[data-strategy-weekday]', STRATEGY_WEEKDAY_KEY, getDefaultStrategyWeekdays(), (checkbox) => Number(checkbox.dataset.strategyWeekday));
+}
+
+function getSelectedProbabilityCourts() {
+    return getStoredCheckboxValues('[data-probability-court]', PROBABILITY_COURT_KEY, LOTTERY_COURTS, (checkbox) => checkbox.dataset.probabilityCourt);
+}
+
+function getSelectedStrategyCourts() {
+    return getStoredCheckboxValues('[data-strategy-court]', STRATEGY_COURT_KEY, LOTTERY_COURTS, (checkbox) => checkbox.dataset.strategyCourt);
+}
+
+function lotteryWeekdayIndex(dateValue) {
+    const jsDay = new Date(`${dateValue}T00:00:00`).getDay();
+    return (jsDay + 6) % 7;
+}
+
+function initLotteryWeekdayFilters() {
+    initCheckboxFilter('[data-lottery-weekday]', LOTTERY_WEEKDAY_KEY, getDefaultLotteryWeekdays(), (checkbox) => Number(checkbox.dataset.lotteryWeekday), () => {
+        loadLotteryBids();
+        loadLotteryDashboard();
+    });
+    initCheckboxFilter('[data-probability-weekday]', PROBABILITY_WEEKDAY_KEY, getDefaultLotteryWeekdays(), (checkbox) => Number(checkbox.dataset.probabilityWeekday), loadLotteryDashboard);
+    initCheckboxFilter('[data-strategy-weekday]', STRATEGY_WEEKDAY_KEY, getDefaultStrategyWeekdays(), (checkbox) => Number(checkbox.dataset.strategyWeekday), loadLotteryDashboard);
+    initCheckboxFilter('[data-probability-court]', PROBABILITY_COURT_KEY, LOTTERY_COURTS, (checkbox) => checkbox.dataset.probabilityCourt, loadLotteryDashboard);
+    initCheckboxFilter('[data-strategy-court]', STRATEGY_COURT_KEY, LOTTERY_COURTS, (checkbox) => checkbox.dataset.strategyCourt, loadLotteryDashboard);
+}
+
+function normalizeLotterySlot(slotData) {
+    const normalized = {};
+    LOTTERY_COURTS.forEach((court) => {
+        const rawValue = slotData && Object.prototype.hasOwnProperty.call(slotData, court) ? slotData[court] : 0;
+        normalized[court] = Math.max(0, Math.min(5, Number.parseInt(rawValue, 10) || 0));
+    });
+    return normalized;
+}
+
+function normalizeLotteryRow(row) {
+    return {
+        date: normalizeCourtDateValue(row.date),
+        slot1: normalizeLotterySlot(row.slot1 || {}),
+        slot2: normalizeLotterySlot(row.slot2 || {})
+    };
+}
+
+function cloneLotteryRows(rows) {
+    return JSON.parse(JSON.stringify(Array.isArray(rows) ? rows : []));
+}
+
+function formatLotteryDateLabel(dateValue) {
+    return `${dateValue} (${LOTTERY_WEEKDAY_NAMES[lotteryWeekdayIndex(dateValue)]})`;
+}
+
+function buildLotteryCalendarRowsWithWeekdays(monthId, data, weekdays) {
+    const selectedWeekdays = new Set(weekdays);
+    const [year, month] = monthId.split('-').map(Number);
+    const lastDay = new Date(year, month, 0).getDate();
+    const dataMap = new Map();
+
+    (Array.isArray(data) ? data : []).forEach((row) => {
+        const normalizedDate = normalizeCourtDateValue(row.date);
+        if (!normalizedDate) return;
+        dataMap.set(normalizedDate, normalizeLotteryRow(row));
+    });
+
+    const rows = [];
+    for (let day = 1; day <= lastDay; day++) {
+        const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        if (!selectedWeekdays.has(lotteryWeekdayIndex(dateKey))) continue;
+        const existingRow = dataMap.get(dateKey);
+        rows.push({
+            date: formatLotteryDateLabel(dateKey),
+            slot1: existingRow ? existingRow.slot1 : normalizeLotterySlot({}),
+            slot2: existingRow ? existingRow.slot2 : normalizeLotterySlot({})
+        });
+    }
+    return rows;
+}
+
+function setLotteryCache(monthId, rows) {
+    const normalizedRows = rows.map(normalizeLotteryRow);
+    lotteryBidsCache[monthId] = {
+        allRows: normalizedRows,
+        visibleRows: buildLotteryCalendarRowsWithWeekdays(monthId, normalizedRows, getSelectedLotteryWeekdays())
+    };
+}
+
+function getLotteryRowsForMonth(monthId, visibleOnly = true) {
+    const cache = lotteryBidsCache[monthId];
+    if (!cache) return [];
+    return visibleOnly ? cache.visibleRows : cache.allRows;
+}
+
+function getLotteryDraftRows(monthId, visibleOnly = true) {
+    const sourceRows = lotteryEditState.active && lotteryEditState.monthId === monthId
+        ? lotteryEditState.draftRows
+        : getLotteryRowsForMonth(monthId, false);
+    if (!visibleOnly) return sourceRows;
+
+    const selectedWeekdays = new Set(getSelectedLotteryWeekdays());
+    return sourceRows.filter((row) => {
+        const dateValue = normalizeCourtDateValue(row.date);
+        return dateValue ? selectedWeekdays.has(lotteryWeekdayIndex(dateValue)) : true;
+    });
+}
+
+function getActiveLotteryMonthId() {
+    if (activeLotteryTab === 'next') return getMonthData(1).id;
+    if (activeLotteryTab === 'selected') return lotterySelectedMonthId;
+    return getMonthData(0).id;
+}
+
+function updateLotteryMonthLabels() {
+    const current = getMonthData(0);
+    const next = getMonthData(1);
+    const selected = getCourtMonthDataById(lotterySelectedMonthId);
+
+    const labelCur = document.getElementById('label-lottery-current-month');
+    const labelNext = document.getElementById('label-lottery-next-month');
+    const labelSelected = document.getElementById('label-lottery-selected-month');
+    if (labelCur) labelCur.innerText = current.label;
+    if (labelNext) labelNext.innerText = next.label;
+    if (labelSelected) labelSelected.innerText = selected.id;
+}
+
+function updateLotteryEditButton() {
+    const editBtn = document.getElementById('lottery-edit-btn');
+    if (!editBtn) return;
+    const isEditing = lotteryEditState.active && lotteryEditState.monthId === getActiveLotteryMonthId();
+    editBtn.innerHTML = isEditing
+        ? '<i class="fas fa-times"></i> Cancel Edit'
+        : '<i class="fas fa-edit"></i> Edit Bids';
+}
+
+function refreshLotteryTableByMonth(monthId) {
+    const currentMonthId = getMonthData(0).id;
+    const nextMonthId = getMonthData(1).id;
+    if (monthId === currentMonthId) renderLotteryTable(currentMonthId, 'lottery-display-current');
+    if (monthId === nextMonthId) renderLotteryTable(nextMonthId, 'lottery-display-next');
+    if (monthId === lotterySelectedMonthId) renderLotteryTable(lotterySelectedMonthId, 'lottery-display-selected');
+}
+
+function renderLotterySlotDisplay(slotData) {
+    const slot = normalizeLotterySlot(slotData || {});
+    const activeCourts = LOTTERY_COURTS.filter((court) => slot[court] > 0);
+    if (activeCourts.length === 0) return '<td class="court-empty">-</td>';
+    const lines = activeCourts.map((court) => `
+        <div class="lottery-slot-line">
+            <span>${court}</span>
+            <strong>${slot[court]}</strong>
+        </div>
+    `).join('');
+    return `<td><div class="lottery-slot-display">${lines}</div></td>`;
+}
+
+function renderLotterySlotEditor(slotData, rowDate, slotKey) {
+    const slot = normalizeLotterySlot(slotData || {});
+    const rows = LOTTERY_COURTS.map((court) => `
+        <div class="lottery-edit-row">
+            <label>${court.replace('Court ', '')}</label>
+            <select onchange="updateLotteryCell('${rowDate}', '${slotKey}', '${court}', this.value)">
+                ${[0, 1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${slot[court] === value ? 'selected' : ''}>${value}</option>`).join('')}
+            </select>
+        </div>
+    `).join('');
+    return `<td class="court-edit-cell"><div class="lottery-edit-grid">${rows}</div></td>`;
+}
+
+function renderLotteryTable(monthId, containerId) {
+    const isEditing = lotteryEditState.active && lotteryEditState.monthId === monthId;
+    const tableData = getLotteryDraftRows(monthId, true);
+    const monthData = getCourtMonthDataById(monthId);
+    let html = '';
+
+    if (isEditing) {
+        html += `
+            <div class="court-controls">
+                <button class="court-btn" onclick="saveLotteryBids()">Save Bids</button>
+                <button class="court-btn" onclick="toggleLotteryEditMode(false)">Cancel Edit</button>
+            </div>
+        `;
+    }
+
+    html += `
+        <div class="court-dashboard-container" data-lottery-month="${monthId}">
+            <div class="court-export-title">Lottery Bids ${monthData.id}</div>
+            <table class="court-table lottery-table">
+                <thead>
+                    <tr>
+                        <th>Date / Weekday</th>
+                        <th>18:00 - 20:00</th>
+                        <th>20:00 - 22:00</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    if (tableData.length === 0) {
+        html += '<tr><td colspan="3" style="color:#999; padding: 20px;">No bid data.</td></tr>';
+    } else {
+        tableData.forEach((row) => {
+            html += `<tr><td><strong>${row.date}</strong></td>`;
+            html += isEditing ? renderLotterySlotEditor(row.slot1, row.date, 'slot1') : renderLotterySlotDisplay(row.slot1);
+            html += isEditing ? renderLotterySlotEditor(row.slot2, row.date, 'slot2') : renderLotterySlotDisplay(row.slot2);
+            html += '</tr>';
+        });
+    }
+
+    html += '</tbody></table></div>';
+    const container = document.getElementById(containerId);
+    if (container) container.innerHTML = html;
+}
+
+async function fetchAndDisplayLotteryBids(monthId, elementId) {
+    try {
+        const response = await fetch(`/api/lottery_bids/${monthId}`);
+        const data = await response.json();
+        const rows = Array.isArray(data.content) ? data.content.map(normalizeLotteryRow) : [];
+        setLotteryCache(monthId, rows);
+        renderLotteryTable(monthId, elementId);
+    } catch (error) {
+        console.error(`Failed to load lottery bids for ${monthId}`, error);
+        const container = document.getElementById(elementId);
+        if (container) container.innerHTML = '<p style="color:red; text-align:center;">Failed to load bid data.</p>';
+    }
+}
+
+async function loadLotteryMonthHistory() {
+    const container = document.getElementById('lottery-display-saved');
+    if (!container) return;
+    try {
+        const response = await fetch('/api/lottery_bids_summary');
+        const data = await response.json();
+        const months = Array.isArray(data.months) ? data.months : [];
+        const isCaptain = localStorage.getItem('vbt_role') === 'captain';
+        if (months.length === 0) {
+            container.innerHTML = '<p style="text-align:center; color:#999; margin:0; padding:20px;">No saved bid records yet.</p>';
+            return;
+        }
+        container.innerHTML = `
+            <div class="court-dashboard-container">
+                <table class="court-table probability-table">
+                    <thead>
+                        <tr>
+                            <th>Saved Month</th>
+                            ${isCaptain ? '<th>Delete Court</th>' : ''}
+                            <th>Total Bids</th>
+                            ${isCaptain ? '<th>Delete Bids</th>' : ''}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${months.map((item) => `
+                            <tr>
+                                <td><strong class="${item.has_court_data ? '' : 'missing-data-text'}">${escapeHtml(item.month_id)}</strong></td>
+                                ${isCaptain ? `<td>${item.has_court_data ? `<button type="button" class="court-btn" style="padding:6px 14px; font-size:0.8rem;" onclick="deleteCourtOnlyMonth('${item.month_id}')">Delete Court</button>` : '<span class="missing-data-text">Missing</span>'}</td>` : ''}
+                                <td><span class="${item.has_bid_data ? '' : 'missing-data-text'}">${item.has_bid_data ? item.total_bids : 'Missing'}</span></td>
+                                ${isCaptain ? `<td>${item.has_bid_data ? `<button type="button" class="court-btn" style="padding:6px 14px; font-size:0.8rem;" onclick="deleteBidOnlyMonth('${item.month_id}')">Delete Bids</button>` : '<span class="missing-data-text">Missing</span>'}</td>` : ''}
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Failed to load lottery month history', error);
+    }
+}
+
+async function loadLotteryBids() {
+    const current = getMonthData(0);
+    const next = getMonthData(1);
+    updateLotteryMonthLabels();
+    await fetchAndDisplayLotteryBids(current.id, 'lottery-display-current');
+    await fetchAndDisplayLotteryBids(next.id, 'lottery-display-next');
+    await fetchAndDisplayLotteryBids(lotterySelectedMonthId, 'lottery-display-selected');
+    await loadLotteryMonthHistory();
+    updateLotteryEditButton();
+}
+
+function switchLotteryTab(tabType) {
+    activeLotteryTab = tabType;
+    document.getElementById('lottery-tab-current').classList.toggle('active', tabType === 'current');
+    document.getElementById('lottery-tab-next').classList.toggle('active', tabType === 'next');
+    document.getElementById('lottery-tab-selected').classList.toggle('active', tabType === 'selected');
+    document.getElementById('lottery-tab-saved').classList.toggle('active', tabType === 'saved');
+    document.getElementById('lottery-display-current').style.display = tabType === 'current' ? 'block' : 'none';
+    document.getElementById('lottery-display-next').style.display = tabType === 'next' ? 'block' : 'none';
+    document.getElementById('lottery-display-selected').style.display = tabType === 'selected' ? 'block' : 'none';
+    document.getElementById('lottery-display-saved').style.display = tabType === 'saved' ? 'block' : 'none';
+    updateLotteryEditButton();
+    loadLotteryDashboard();
+}
+
+async function loadSelectedLotteryMonth() {
+    const picker = document.getElementById('lottery-month-picker');
+    lotterySelectedMonthId = picker && picker.value ? picker.value : getMonthData(0).id;
+    updateLotteryMonthLabels();
+    await fetchAndDisplayLotteryBids(lotterySelectedMonthId, 'lottery-display-selected');
+    switchLotteryTab('selected');
+}
+
+function toggleLotteryEditMode(forceState) {
+    const monthId = getActiveLotteryMonthId();
+    const shouldEnable = typeof forceState === 'boolean' ? forceState : !(lotteryEditState.active && lotteryEditState.monthId === monthId);
+    if (shouldEnable) {
+        lotteryEditState.active = true;
+        lotteryEditState.monthId = monthId;
+        lotteryEditState.draftRows = cloneLotteryRows(getLotteryRowsForMonth(monthId, false));
+    } else {
+        lotteryEditState.active = false;
+        lotteryEditState.monthId = null;
+        lotteryEditState.draftRows = [];
+    }
+    refreshLotteryTableByMonth(monthId);
+    updateLotteryEditButton();
+}
+
+function updateLotteryCell(rowDate, slotKey, court, value) {
+    if (!lotteryEditState.active) return;
+    const normalizedDate = normalizeCourtDateValue(rowDate);
+    const row = lotteryEditState.draftRows.find((item) => item.date === normalizedDate);
+    if (!row) return;
+    row[slotKey] = normalizeLotterySlot(row[slotKey] || {});
+    row[slotKey][court] = Math.max(0, Math.min(5, Number.parseInt(value, 10) || 0));
+}
+
+async function saveLotteryBids() {
+    if (!lotteryEditState.active || !lotteryEditState.monthId) return;
+    const monthId = lotteryEditState.monthId;
+    const sanitizedRows = lotteryEditState.draftRows.map(normalizeLotteryRow);
+    try {
+        const response = await fetch('/api/lottery_bids', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ month_id: monthId, content: sanitizedRows })
+        });
+        if (response.ok) {
+            setLotteryCache(monthId, sanitizedRows);
+            lotteryEditState.active = false;
+            lotteryEditState.monthId = null;
+            lotteryEditState.draftRows = [];
+            refreshLotteryTableByMonth(monthId);
+            await loadLotteryMonthHistory();
+            await loadLotteryDashboard();
+            updateLotteryEditButton();
+            alert(`Lottery bids for ${monthId} saved successfully.`);
+        } else {
+            alert('Failed to save lottery bids.');
+        }
+    } catch (error) {
+        console.error('Error saving lottery bids', error);
+        alert('Failed to save lottery bids.');
+    }
+}
+
+function initProbabilityControls() {
+    const currentMonthId = getMonthData(0).id;
+    const startInput = document.getElementById('probability-start-month');
+    const endInput = document.getElementById('probability-end-month');
+    const picker = document.getElementById('lottery-month-picker');
+    if (startInput) startInput.value = currentMonthId;
+    if (endInput) endInput.value = currentMonthId;
+    if (picker) picker.value = currentMonthId;
+}
+
+function switchProbabilityTab(tabType) {
+    activeProbabilityTab = tabType;
+    document.getElementById('probability-tab-selected').classList.toggle('active', tabType === 'selected');
+    document.getElementById('probability-tab-all').classList.toggle('active', tabType === 'all');
+    document.getElementById('probability-selected-panel').style.display = tabType === 'selected' ? 'block' : 'none';
+    document.getElementById('probability-all-panel').style.display = tabType === 'all' ? 'block' : 'none';
+}
+
+function switchStrategyTab(tabType) {
+    activeStrategyTab = tabType;
+    document.getElementById('strategy-tab-selected').classList.toggle('active', tabType === 'selected');
+    document.getElementById('strategy-tab-all').classList.toggle('active', tabType === 'all');
+    document.getElementById('strategy-selected-panel').style.display = tabType === 'selected' ? 'block' : 'none';
+    document.getElementById('strategy-all-panel').style.display = tabType === 'all' ? 'block' : 'none';
+}
+
+function getProbabilityCellTone(winRate, attempts) {
+    if (!attempts) return '#f8fafc';
+    if (attempts < 2) return '#f2f6f9';
+
+    const blueScale = [
+        '#f3f6f9',
+        '#edf3f8',
+        '#e6eef5',
+        '#dde8f2',
+        '#d3e2ee',
+        '#c5d9e8',
+        '#b5cde0',
+        '#9dbbd3',
+        '#7ea4c1',
+        '#5f86a7',
+    ];
+    const normalized = Math.max(0, Math.min(100, Number(winRate) || 0));
+    const index = Math.min(blueScale.length - 1, Math.floor(normalized / 10));
+    return blueScale[index];
+}
+
+
+function getProbabilityCellPalette(winRate, attempts) {
+    const background = getProbabilityCellTone(winRate, attempts);
+    if (!attempts) {
+        return { background, text: '#5d7082', subtext: '#708394', border: 'rgba(77, 102, 124, 0.08)' };
+    }
+    if (attempts < 2) {
+        return { background, text: '#4f6477', subtext: '#6d8090', border: 'rgba(77, 102, 124, 0.10)' };
+    }
+
+    const normalized = Math.max(0, Math.min(100, Number(winRate) || 0));
+    if (normalized >= 80) {
+        return { background, text: '#ffffff', subtext: 'rgba(255, 255, 255, 0.92)', border: 'rgba(53, 82, 105, 0.18)' };
+    }
+    if (normalized >= 60) {
+        return { background, text: '#203444', subtext: '#f4f8fb', border: 'rgba(53, 82, 105, 0.16)' };
+    }
+    if (normalized >= 30) {
+        return { background, text: '#324a5e', subtext: '#4c6478', border: 'rgba(77, 102, 124, 0.14)' };
+    }
+    return { background, text: '#4f6477', subtext: '#6b7f90', border: 'rgba(77, 102, 124, 0.12)' };
+}
+
+function renderProbabilityMatrix(stats, emptyMessage, selectedWeekdays, selectedCourts) {
+    const weekdayNames = selectedWeekdays.map((index) => LOTTERY_WEEKDAY_NAMES[index]);
+    const filteredStats = (Array.isArray(stats) ? stats : []).filter((item) => weekdayNames.includes(item.weekday) && selectedCourts.includes(item.court));
+    if (filteredStats.length === 0) return `<p style="text-align:center; color:#999; padding: 20px;">${emptyMessage}</p>`;
+
+    const times = ['18:00-20:00', '20:00-22:00'];
+    const statMap = new Map(filteredStats.map((item) => [`${item.weekday}|${item.time}|${item.court}`, item]));
+    let html = '<div class="court-dashboard-container"><div class="probability-matrix"><table class="court-table probability-table"><thead><tr><th>Weekday / Time</th>';
+    selectedCourts.forEach((court) => { html += `<th>${court}</th>`; });
+    html += '</tr></thead><tbody>';
+
+    weekdayNames.forEach((weekday) => {
+        times.forEach((time) => {
+            html += `<tr><td><strong>${weekday}</strong><br>${time}</td>`;
+            selectedCourts.forEach((court) => {
+                const item = statMap.get(`${weekday}|${time}|${court}`);
+                const winRate = item ? item.win_rate : 0;
+                const attempts = item ? item.attempts : 0;
+                const totalWins = item ? item.total_wins : 0;
+                const ticketProbability = item ? item.ticket_probability : 0;
+                const palette = getProbabilityCellPalette(winRate, attempts);
+                html += `
+                    <td>
+                        <div class="probability-cell" style="background:${palette.background}; color:${palette.text}; border-color:${palette.border};">
+                            <strong style="color:${palette.text};">${winRate}%</strong>
+                            <small style="color:${palette.subtext};">${totalWins} / ${attempts} wins • per-ticket ${ticketProbability}%</small>
+                        </div>
+                    </td>
+                `;
+            });
+            html += '</tr>';
+        });
+    });
+
+    html += '</tbody></table></div></div>';
+    return html;
+}
+
+function groupStrategyRows(rows) {
+    const grouped = new Map();
+    (rows || []).forEach((row) => {
+        if (!grouped.has(row.date)) {
+            grouped.set(row.date, { date: row.date, weekday: row.weekday, dateSuccessRate: 0, slot1: null, slot2: null });
+        }
+        const target = grouped.get(row.date);
+        if (row.time === '18:00-20:00') target.slot1 = row;
+        else target.slot2 = row;
+    });
+    return Array.from(grouped.values())
+        .map((dayRow) => {
+            const slot1Rate = dayRow.slot1 ? ((dayRow.slot1.success_rate || 0) / 100) : 0;
+            const slot2Rate = dayRow.slot2 ? ((dayRow.slot2.success_rate || 0) / 100) : 0;
+            dayRow.dateSuccessRate = Math.round((1 - ((1 - slot1Rate) * (1 - slot2Rate))) * 1000) / 10;
+            return dayRow;
+        })
+        .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function renderStrategyCell(dayRow, court) {
+    const slot1Bid = dayRow.slot1 ? (dayRow.slot1.allocations[court] || 0) : 0;
+    const slot2Bid = dayRow.slot2 ? (dayRow.slot2.allocations[court] || 0) : 0;
+    const slot1Class = slot1Bid > 0 ? ` strategy-bid--level-${Math.min(slot1Bid, 5)}` : '';
+    const slot2Class = slot2Bid > 0 ? ` strategy-bid--level-${Math.min(slot2Bid, 5)}` : '';
+    return `
+        <td class="strategy-split-cell">
+            <div class="strategy-split-stack">
+                <div class="strategy-split-half">
+                    <span class="strategy-bid${slot1Class}">${slot1Bid}</span>
+                </div>
+                <div class="strategy-split-half">
+                    <span class="strategy-bid${slot2Class}">${slot2Bid}</span>
+                </div>
+            </div>
+        </td>
+    `;
+}
+
+function renderStrategySuccessCell(dayRow) {
+    const slot1Rate = dayRow.slot1 ? (dayRow.slot1.success_rate || 0) : 0;
+    const slot2Rate = dayRow.slot2 ? (dayRow.slot2.success_rate || 0) : 0;
+    return `
+        <td class="strategy-split-cell">
+            <div class="strategy-split-stack">
+                <div class="strategy-split-half">
+                    <span class="strategy-split-rate">${slot1Rate}%</span>
+                </div>
+                <div class="strategy-split-half">
+                    <span class="strategy-split-rate">${slot2Rate}%</span>
+                </div>
+            </div>
+        </td>
+    `;
+}
+
+function renderStrategyTable(rows, summaryLabel, selectedCourts) {
+    if (!Array.isArray(rows) || rows.length === 0) return '<p style="text-align:center; color:#999; padding: 20px;">Not enough data to generate strategy.</p>';
+    const days = groupStrategyRows(rows);
+    let html = `<div class="strategy-note">${escapeHtml(summaryLabel)}</div>`;
+    html += '<div class="court-dashboard-container"><div class="probability-matrix"><table class="court-table probability-table"><thead><tr><th>Date / Weekday</th>';
+    selectedCourts.forEach((court) => { html += `<th>${court}<br><small>18-20 / 20-22</small></th>`; });
+    html += '<th>Slot Success<br><small>18-20 / 20-22</small></th><th>Daily Success</th></tr></thead><tbody>';
+
+    days.forEach((dayRow) => {
+        html += `<tr><td><strong>${dayRow.date} (${dayRow.weekday})</strong></td>`;
+        selectedCourts.forEach((court) => { html += renderStrategyCell(dayRow, court); });
+        html += renderStrategySuccessCell(dayRow);
+        html += `<td><strong>${dayRow.dateSuccessRate}%</strong></td></tr>`;
+    });
+
+    html += '</tbody></table></div></div>';
+    return html;
+}
+
+function refreshLotteryDashboard() {
+    loadLotteryDashboard();
+}
+
+function refreshStrategyPanel() {
+    loadLotteryDashboard();
+}
+
+function getStrategyWeights() {
+    const ratioInput = document.getElementById('strategy-weight-ratio');
+    const ratio = Number.parseFloat(ratioInput ? ratioInput.value : '1.3');
+    const late = Number.isFinite(ratio) && ratio > 0 ? ratio : 1.3;
+    return {
+        early: 1,
+        late,
+    };
+}
+
+async function loadLotteryDashboard() {
+    const startInput = document.getElementById('probability-start-month');
+    const endInput = document.getElementById('probability-end-month');
+    if (!startInput || !endInput) return;
+
+    let startMonth = startInput.value || getMonthData(0).id;
+    let endMonth = endInput.value || startMonth;
+    if (startMonth > endMonth) {
+        [startMonth, endMonth] = [endMonth, startMonth];
+        startInput.value = startMonth;
+        endInput.value = endMonth;
+    }
+
+    const targetMonth = getMonthData(1).id;
+    const probabilityWeekdays = getSelectedProbabilityWeekdays();
+    const strategyWeekdays = getSelectedStrategyWeekdays();
+    const probabilityCourts = getSelectedProbabilityCourts();
+    const strategyCourts = getSelectedStrategyCourts();
+    const strategyWeights = getStrategyWeights();
+
+    const params = new URLSearchParams({
+        start_month: startMonth,
+        end_month: endMonth,
+        target_month: targetMonth,
+        strategy_weight_ratio: String(strategyWeights.late),
+    });
+    strategyWeekdays.forEach((weekday) => params.append('strategy_weekday', String(weekday)));
+
+    try {
+        const response = await fetch(`/api/lottery_dashboard?${params.toString()}`);
+        const data = await response.json();
+
+        const selectedPanel = document.getElementById('probability-selected-panel');
+        const allPanel = document.getElementById('probability-all-panel');
+        const summary = document.getElementById('probability-summary');
+        const strategySelectedPanel = document.getElementById('strategy-selected-panel');
+        const strategyAllPanel = document.getElementById('strategy-all-panel');
+
+        if (selectedPanel) selectedPanel.innerHTML = renderProbabilityMatrix(data.selected.stats, 'No valid matched months in the selected range.', probabilityWeekdays, probabilityCourts);
+        if (allPanel) allPanel.innerHTML = renderProbabilityMatrix(data.all_time.stats, 'No historical matched months yet.', probabilityWeekdays, probabilityCourts);
+        if (summary) {
+            const usedRange = (data.selected.months_used || []).join(', ') || 'None';
+            const usedHistory = (data.all_time.months_used || []).join(', ') || 'None';
+            summary.innerHTML = `Selected range: <strong>${escapeHtml(usedRange)}</strong><br>All history: <strong>${escapeHtml(usedHistory)}</strong>`;
+        }
+        const selectedStrategySummary = `Selected range: ${(data.selected.months_used || []).join(', ') || 'None'}`;
+        const allHistoryStrategySummary = `All history: ${(data.all_time.months_used || []).join(', ') || 'None'}`;
+        if (strategySelectedPanel) strategySelectedPanel.innerHTML = renderStrategyTable(data.strategy.selected.rows, selectedStrategySummary, strategyCourts);
+        if (strategyAllPanel) strategyAllPanel.innerHTML = renderStrategyTable(data.strategy.all_time.rows, allHistoryStrategySummary, strategyCourts);
+
+        switchProbabilityTab(activeProbabilityTab);
+        switchStrategyTab(activeStrategyTab);
+    } catch (error) {
+        console.error('Failed to load lottery dashboard', error);
+    }
+}
+
+async function downloadStrategyTableAsPng() {
+    const panelId = activeStrategyTab === 'all' ? 'strategy-all-panel' : 'strategy-selected-panel';
+    const target = document.getElementById(panelId);
+    if (!target) return;
+
+    const captureNode = target.querySelector('.court-dashboard-container') || target;
+    if (typeof html2canvas !== 'function') {
+        alert('html2canvas is not loaded.');
+        return;
+    }
+
+    const canvas = await html2canvas(captureNode, {
+        backgroundColor: '#ffffff',
+        scale: Math.max(window.devicePixelRatio || 1, 2),
+        useCORS: true,
+    });
+
+    const link = document.createElement('a');
+    link.download = `strategy-${activeStrategyTab === 'all' ? 'all-history' : 'selected-range'}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+}
+
+window.addEventListener('load', initLotteryWeekdayFilters);
+window.addEventListener('load', initProbabilityControls);
+window.addEventListener('load', loadLotteryBids);
+window.addEventListener('load', loadLotteryDashboard);
+window.addEventListener('load', () => {
+    ['strategy-weight-ratio'].forEach((id) => {
+        const input = document.getElementById(id);
+        if (!input) return;
+        input.addEventListener('change', loadLotteryDashboard);
+    });
+});
+
+// ==========================================
+// 7. Change Password Feature
+// ==========================================
+function openChangePassword() {
+    document.getElementById('change-password-overlay').style.setProperty('display', 'flex', 'important');
+    document.getElementById('cp-message').innerText = '';
+    document.getElementById('old-password').value = '';
+    document.getElementById('new-password').value = '';
+    
+    // 自動關閉頭像下拉選單
+    const menu = document.getElementById('avatarMenu');
+    if(menu) menu.classList.remove('active');
+}
+
+function closeChangePassword() {
+    document.getElementById('change-password-overlay').style.setProperty('display', 'none', 'important');
+}
+
+async function submitChangePassword() {
+    const oldPassword = document.getElementById('old-password').value;
+    const newPassword = document.getElementById('new-password').value;
+    const messageEl = document.getElementById('cp-message');
+    
+    // 從 LocalStorage 抓取當前登入的帳號
+    const username = localStorage.getItem('vbt_username');
+
+    if (!oldPassword || !newPassword) {
+        messageEl.style.color = '#ff4757';
+        messageEl.innerText = 'Please fill in all fields.';
+        return;
+    }
+
+    // 按鈕顯示讀取中
+    const btn = event.target;
+    const originalText = btn.innerText;
+    btn.innerText = 'Updating...';
+    btn.disabled = true;
+
+    try {
+        const response = await fetch('/api/change_password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, old_password: oldPassword, new_password: newPassword })
+        });
+        
+        const data = await response.json();
+
+        if (response.ok) {
+            messageEl.style.color = '#2ecc71';
+            messageEl.innerText = 'Password updated successfully!';
+            setTimeout(() => {
+                closeChangePassword();
+            }, 1500);
+        } else {
+            messageEl.style.color = '#ff4757';
+            messageEl.innerText = data.error || 'Failed to update password.';
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        messageEl.style.color = '#ff4757';
+        messageEl.innerText = 'Server connection error.';
+    } finally {
+        btn.innerText = originalText;
+        btn.disabled = false;
+    }
+}
+// ==========================================
+// 8. Keyboard Shortcuts (Enter to Submit)
+// ==========================================
+document.addEventListener('DOMContentLoaded', () => {
+    // 建立一個共用的小工具：綁定 Enter 鍵到指定的按鈕功能上
+    const attachEnter = (inputId, submitFunction) => {
+        const inputElement = document.getElementById(inputId);
+        if (inputElement) {
+            inputElement.addEventListener('keypress', (event) => {
+                if (event.key === 'Enter') {
+                    submitFunction();
+                }
+            });
+        }
+    };
+
+    // 幫登入欄位加上 Enter 快捷鍵
+    attachEnter('username', handleLogin);
+    attachEnter('login-password', handleLogin);
+
+    // 幫註冊欄位加上 Enter 快捷鍵
+    attachEnter('reg-username', handleRegister);
+    attachEnter('reg-password', handleRegister);
+
+    // 幫修改密碼欄位加上 Enter 快捷鍵
+    attachEnter('old-password', submitChangePassword);
+    attachEnter('new-password', submitChangePassword);
+});
+// ==========================================
+// 9. Dynamic Announcements Feature
+// ==========================================
+window.addEventListener('load', loadAnnouncements);
+
+async function loadAnnouncements() {
+    try {
+        const response = await fetch('/api/announcements');
+        if (response.ok) {
+            const data = await response.json();
+            window.currentAnnouncementsRaw = data.content; // 記住純文字，編輯時要用
+            renderAnnouncements(data.content);
+        }
+    } catch (error) {
+        console.error('Error loading announcements:', error);
+    }
+}
+
+function renderAnnouncements(rawText) {
+    const container = document.getElementById('announcement-content');
+    if (!rawText || !rawText.trim()) {
+        container.innerHTML = '<p style="color:#999; margin: 0;">目前沒有新公告。</p>';
+        return;
+    }
+    
+    // 把文字依照換行符號切開
+    const lines = rawText.split('\n').filter(line => line.trim() !== '');
+    
+    let html = '<ul style="margin-bottom:0; padding-left: 20px;">';
+    lines.forEach(line => { 
+        let formattedLine = line;
+        // 如果有冒號，就把冒號前面的字加粗
+        if (line.includes(':')) {
+            const parts = line.split(/:(.*)/s); 
+            formattedLine = `<strong>${parts[0]}</strong>:${parts[1]}`;
+        } else if (line.includes('：')) {
+            const parts = line.split(/：(.*)/s);
+            formattedLine = `<strong>${parts[0]}</strong>：${parts[1]}`;
+        }
+        html += `<li class="announcement-item">${formattedLine}</li>`;
+    });
+    html += '</ul>';
+    container.innerHTML = html;
+}
+
+function openEditAnnouncement() {
+    document.getElementById('edit-announcement-overlay').style.setProperty('display', 'flex', 'important');
+    document.getElementById('announcement-textarea').value = window.currentAnnouncementsRaw || '';
+}
+
+function closeEditAnnouncement() {
+    document.getElementById('edit-announcement-overlay').style.setProperty('display', 'none', 'important');
+}
+
+async function submitAnnouncements() {
+    const newContent = document.getElementById('announcement-textarea').value;
+    const btn = event.target;
+    const originalText = btn.innerText;
+    btn.innerText = 'Saving...';
+    btn.disabled = true;
+
+    try {
+        const response = await fetch('/api/announcements', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: newContent })
+        });
+
+        if (response.ok) {
+            closeEditAnnouncement();
+            loadAnnouncements(); // 儲存成功後，重新讀取並刷新畫面
+        } else {
+            alert('Failed to save announcements.');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Server connection error.');
+    } finally {
+        btn.innerText = originalText;
+        btn.disabled = false;
+    }
+}
+// ==========================================
+// 10. Showcase Slider Feature (首頁合照輪播)
+// ==========================================
+window.addEventListener('load', loadShowcaseSlider);
+
+let sliderInterval; // 宣告計時器
+
+async function loadShowcaseSlider() {
+    const container = document.getElementById('showcase-slider-container') || document.getElementById('hero-slider-container');
+    if (!container) return;
+
+    try {
+        const response = await fetch('/api/showcase_photo_assets');
+        const photos = await response.json();
+
+        if (!photos || photos.length === 0) {
+            container.style.display = 'none';
+            return;
+        }
+
+        container.style.display = 'block';
+        container.innerHTML = ''; 
+
+        let slidesHtml = '';
+        let dotsHtml = '<div class="slider-dots">';
+
+        photos.forEach((photo, index) => {
+            const imgPath = photo.src;
+            const activeClass = index === 0 ? 'active' : '';
+            slidesHtml += `<img src="${imgPath}" class="showcase-slide ${activeClass}" onclick="openLightbox('${imgPath}')">`;
+            dotsHtml += `<div class="dot ${activeClass}" onclick="goToSlide(${index})"></div>`;
+        });
+
+        dotsHtml += '</div>';
+        container.innerHTML = slidesHtml + dotsHtml;
+
+        startSliderTimer();
+
+    } catch (error) {
+        console.error('Error loading showcase slider:', error);
+    }
+}
+
+const loadHeroSlider = loadShowcaseSlider;
+
+function startSliderTimer() {
+    clearInterval(sliderInterval);
+    sliderInterval = setInterval(() => {
+        nextSlide();
+    }, 4500); // 4500 毫秒 = 4.5 秒換一張
+}
+
+function nextSlide() {
+    const slides = document.querySelectorAll('.showcase-slide, .hero-slide');
+    if (slides.length <= 1) return;
+
+    let currentIndex = Array.from(slides).findIndex(slide => slide.classList.contains('active'));
+    let nextIndex = (currentIndex + 1) % slides.length;
+
+    goToSlide(nextIndex);
+}
+
+function goToSlide(index) {
+    const slides = document.querySelectorAll('.showcase-slide, .hero-slide');
+    const dots = document.querySelectorAll('.dot');
+    
+    // 移除舊的 active
+    slides.forEach(slide => slide.classList.remove('active'));
+    dots.forEach(dot => dot.classList.remove('active'));
+
+    // 加上新的 active
+    slides[index].classList.add('active');
+    dots[index].classList.add('active');
+
+    // 重新計時 (避免使用者手動點擊後，馬上又跳下一張)
+    startSliderTimer();
+}
