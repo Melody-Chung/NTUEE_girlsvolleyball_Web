@@ -1523,6 +1523,9 @@ def get_showcase_photo_assets():
     }
     assets = []
     for filename in selected_photos:
+        if not filename or not isinstance(filename, str):
+            print(f"警告：跳過無效的檔名 {filename}")
+            continue
         cropped_filename = crop_map.get(filename)
         if cropped_filename:
             src = storage_public_url(SHOWCASE_BUCKET, cropped_filename)
