@@ -2,10 +2,12 @@ import calendar
 import json
 import math
 import os
-import shutil
 import subprocess
+import sys
 import threading
 from datetime import date, datetime
+from io import BytesIO
+from uuid import uuid4
 
 from flask import Flask, jsonify, render_template, request
 from supabase import Client, create_client
@@ -18,12 +20,8 @@ app = Flask(__name__)
 app.secret_key = settings.SECRET_KEY
 
 DB_PATH = str(settings.DB_PATH)
-UPLOAD_FOLDER = str(settings.UPLOAD_FOLDER)
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-SHOWCASE_CROP_FOLDER = str(settings.SHOWCASE_CROP_FOLDER)
-os.makedirs(SHOWCASE_CROP_FOLDER, exist_ok=True)
-LEGACY_SHOWCASE_CROP_FOLDER = os.path.join(os.path.dirname(SHOWCASE_CROP_FOLDER), "hero")
+GALLERY_BUCKET = settings.SUPABASE_GALLERY_BUCKET
+SHOWCASE_BUCKET = settings.SUPABASE_SHOWCASE_BUCKET
 supabase: Client | None = (
     create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
     if settings.SUPABASE_URL and settings.SUPABASE_KEY
@@ -94,6 +92,42 @@ def sb_delete(table, filters=None):
     query = _apply_filters(query, filters)
     response = query.execute()
     return response.data or []
+
+
+def storage_bucket(bucket):
+    return require_supabase().storage.from_(bucket)
+
+
+def storage_upload(bucket, path, content, content_type):
+    client = storage_bucket(bucket)
+    options = {"content-type": content_type, "upsert": "true"}
+    try:
+        return client.upload(path=path, file=content, file_options=options)
+    except TypeError:
+        return client.upload(path, content, options)
+
+
+def storage_remove(bucket, paths):
+    if not paths:
+        return None
+    try:
+        return storage_bucket(bucket).remove(paths)
+    except Exception:
+        return None
+
+
+def storage_public_url(bucket, path):
+    return storage_bucket(bucket).get_public_url(path)
+
+
+def build_storage_key(original_name, suffix=""):
+    safe_name = secure_filename(original_name or "")
+    base_name, extension = os.path.splitext(safe_name)
+    extension = extension or ".jpg"
+    unique_id = uuid4().hex[:12]
+    if suffix:
+        return f"{base_name or 'file'}_{suffix}_{unique_id}{extension}"
+    return f"{base_name or 'file'}_{unique_id}{extension}"
 
 
 def get_system_data_json(key, default):
@@ -180,44 +214,25 @@ def get_saved_court_status(month_id):
 
 
 def get_showcase_photos():
-    photos = get_system_data_json("showcase_photos", None)
-    if photos is None:
-        photos = get_system_data_json("hero_photos", [])
+    photos = get_system_data_json("showcase_photos", [])
     return photos if isinstance(photos, list) else []
 
 
 def set_showcase_photos(photos):
     set_system_data_json("showcase_photos", photos)
-    set_system_data_json("hero_photos", photos)
 
 
 def get_showcase_crop_map():
-    crop_map = get_system_data_json("showcase_photo_crops", None)
-    if crop_map is None:
-        crop_map = get_system_data_json("hero_photo_crops", {})
+    crop_map = get_system_data_json("showcase_photo_crops", {})
     return crop_map if isinstance(crop_map, dict) else {}
 
 
 def set_showcase_crop_map(crop_map):
     set_system_data_json("showcase_photo_crops", crop_map)
-    set_system_data_json("hero_photo_crops", crop_map)
 
 
 def resolve_showcase_crop_path(filename):
-    if not filename:
-        return ""
-
-    showcase_path = os.path.join(SHOWCASE_CROP_FOLDER, filename)
-    if os.path.exists(showcase_path):
-        return showcase_path
-
-    legacy_path = os.path.join(LEGACY_SHOWCASE_CROP_FOLDER, filename)
-    if os.path.exists(legacy_path):
-        os.makedirs(SHOWCASE_CROP_FOLDER, exist_ok=True)
-        shutil.copy2(legacy_path, showcase_path)
-        return showcase_path
-
-    return showcase_path
+    return filename or ""
 
 
 LOTTERY_COURTS = ["Court 4", "Court 5", "Court 6", "Court 7"]
@@ -1321,7 +1336,7 @@ def trigger_scrape():
             print(f"Starting scraper for {target_month}...")
             payload_str = json.dumps(data)
             result = subprocess.run(
-                ["python", "main.py", payload_str],
+                [sys.executable, "main.py", payload_str],
                 capture_output=True,
                 text=True,
                 cwd="drawresult",
@@ -1429,9 +1444,11 @@ def upload_photo():
         if file.filename == "":
             continue
 
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-        file.save(file_path)
+        filename = build_storage_key(file.filename)
+        content = file.read()
+        if not content:
+            continue
+        storage_upload(GALLERY_BUCKET, filename, content, file.mimetype or "application/octet-stream")
         sb_insert("gallery", {"filename": filename, "uploaded_by": uploader})
         saved_files.append(filename)
 
@@ -1445,7 +1462,15 @@ def upload_photo():
 
 @app.route("/api/gallery", methods=["GET"])
 def get_gallery():
-    photos = [row["filename"] for row in sb_select("gallery", columns="filename", order_by="id", desc=True)]
+    rows = sb_select("gallery", columns="filename, uploaded_date", order_by="id", desc=True)
+    photos = [
+        {
+            "filename": row["filename"],
+            "src": f"{storage_public_url(GALLERY_BUCKET, row['filename'])}?v={row.get('uploaded_date', '')}",
+        }
+        for row in rows
+        if row.get("filename")
+    ]
     return jsonify(photos)
 
 
@@ -1459,9 +1484,7 @@ def delete_photo():
 
     sb_delete("gallery", [("eq", "filename", filename)])
 
-    file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-    if os.path.exists(file_path):
-        os.remove(file_path)
+    storage_remove(GALLERY_BUCKET, [filename])
 
     selected_photos = get_showcase_photos()
     if filename in selected_photos:
@@ -1471,19 +1494,13 @@ def delete_photo():
     crop_map = get_showcase_crop_map()
     cropped_filename = crop_map.pop(filename, None)
     if cropped_filename:
-        cropped_path = resolve_showcase_crop_path(cropped_filename)
-        if os.path.exists(cropped_path):
-            os.remove(cropped_path)
-        legacy_cropped_path = os.path.join(LEGACY_SHOWCASE_CROP_FOLDER, cropped_filename)
-        if os.path.exists(legacy_cropped_path):
-            os.remove(legacy_cropped_path)
+        storage_remove(SHOWCASE_BUCKET, [cropped_filename])
         set_showcase_crop_map(crop_map)
 
     return jsonify({"status": "success", "message": "Photo deleted."})
 
 
 @app.route('/api/showcase_photos', methods=['GET', 'POST'])
-@app.route('/api/hero_photos', methods=['GET', 'POST'])
 def handle_showcase_photos():
     if request.method == 'GET':
         return jsonify(get_showcase_photos())
@@ -1496,27 +1513,27 @@ def handle_showcase_photos():
 
 
 @app.route('/api/showcase_photo_assets', methods=['GET'])
-@app.route('/api/hero_photo_assets', methods=['GET'])
 def get_showcase_photo_assets():
     selected_photos = get_showcase_photos()
     crop_map = get_showcase_crop_map()
+    gallery_rows = {
+        row["filename"]: row
+        for row in sb_select("gallery", columns="filename, uploaded_date")
+        if row.get("filename")
+    }
     assets = []
     for filename in selected_photos:
         cropped_filename = crop_map.get(filename)
-        cropped_path = resolve_showcase_crop_path(cropped_filename) if cropped_filename else ""
-        if cropped_filename and os.path.exists(cropped_path):
-            version = int(os.path.getmtime(cropped_path))
-            src = f"/static/uploads/showcase/{cropped_filename}?v={version}"
+        if cropped_filename:
+            src = storage_public_url(SHOWCASE_BUCKET, cropped_filename)
         else:
-            gallery_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-            version = int(os.path.getmtime(gallery_path)) if os.path.exists(gallery_path) else int(datetime.now().timestamp())
-            src = f"/static/uploads/gallery/{filename}?v={version}"
+            row = gallery_rows.get(filename, {})
+            src = f"{storage_public_url(GALLERY_BUCKET, filename)}?v={row.get('uploaded_date', '')}"
         assets.append({"filename": filename, "src": src})
     return jsonify(assets)
 
 
 @app.route('/api/showcase_photo_crop', methods=['POST'])
-@app.route('/api/hero_photo_crop', methods=['POST'])
 def save_showcase_photo_crop():
     filename = request.form.get("filename", "").strip()
     file = request.files.get("crop")
@@ -1528,22 +1545,18 @@ def save_showcase_photo_crop():
     crop_map = get_showcase_crop_map()
     previous_cropped_filename = crop_map.get(safe_name)
     if previous_cropped_filename:
-        previous_cropped_path = resolve_showcase_crop_path(previous_cropped_filename)
-        if os.path.exists(previous_cropped_path):
-            os.remove(previous_cropped_path)
-        legacy_previous_path = os.path.join(LEGACY_SHOWCASE_CROP_FOLDER, previous_cropped_filename)
-        if os.path.exists(legacy_previous_path):
-            os.remove(legacy_previous_path)
-
-    cropped_filename = f"{base_name}_showcase_{int(datetime.now().timestamp())}.jpg"
-    cropped_path = os.path.join(SHOWCASE_CROP_FOLDER, cropped_filename)
-    file.save(cropped_path)
+        storage_remove(SHOWCASE_BUCKET, [previous_cropped_filename])
+    cropped_filename = build_storage_key(f"{base_name}.jpg", suffix="showcase")
+    content = file.read()
+    if not content:
+        return jsonify({"error": "Empty crop file"}), 400
+    storage_upload(SHOWCASE_BUCKET, cropped_filename, content, file.mimetype or "image/jpeg")
 
     crop_map[safe_name] = cropped_filename
     set_showcase_crop_map(crop_map)
-    return jsonify({"message": "Showcase crop saved", "src": f"/static/uploads/showcase/{cropped_filename}"})
+    return jsonify({"message": "Showcase crop saved", "src": storage_public_url(SHOWCASE_BUCKET, cropped_filename)})
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")))
 
 

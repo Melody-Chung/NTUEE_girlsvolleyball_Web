@@ -4,3 +4,4 @@ supabase
 requests
 beautifulsoup4
 Werkzeug
+gunicorn

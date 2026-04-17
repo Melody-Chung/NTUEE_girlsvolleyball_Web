@@ -29,16 +29,12 @@ def env_csv(name: str, default: list[str] | None = None) -> list[str]:
 
 
 DB_PATH = Path(os.getenv("VBT_DB_PATH", str(BASE_DIR / "vbt.db"))).resolve()
-UPLOAD_FOLDER = Path(os.getenv("VBT_UPLOAD_FOLDER", str(BASE_DIR / "static" / "uploads" / "gallery"))).resolve()
-SHOWCASE_CROP_FOLDER = Path(
-    os.getenv("VBT_SHOWCASE_CROP_FOLDER")
-    or os.getenv("VBT_HERO_CROP_FOLDER")
-    or str(BASE_DIR / "static" / "uploads" / "showcase")
-).resolve()
 
 SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "change-me-in-.env")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "").strip()
+SUPABASE_GALLERY_BUCKET = os.getenv("SUPABASE_GALLERY_BUCKET", "gallery").strip() or "gallery"
+SUPABASE_SHOWCASE_BUCKET = os.getenv("SUPABASE_SHOWCASE_BUCKET", "showcase").strip() or "showcase"
 
 BOOTSTRAP_ADMIN_ENABLED = env_bool("VBT_BOOTSTRAP_ADMIN_ENABLED", True)
 BOOTSTRAP_ADMIN_USERNAME = os.getenv("VBT_BOOTSTRAP_ADMIN_USERNAME", "admin")

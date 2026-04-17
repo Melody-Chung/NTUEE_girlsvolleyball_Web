@@ -8,11 +8,6 @@ vbt.db
 *.sqlite
 *.sqlite3
 
-static/uploads/gallery/*
-static/uploads/hero/*
-!static/uploads/gallery/.gitkeep
-!static/uploads/hero/.gitkeep
-
 drawresult/credentials.json
 dashboard.html
 

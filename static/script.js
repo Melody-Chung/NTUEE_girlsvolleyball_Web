@@ -764,10 +764,11 @@ async function loadGallery() {
             return;
         }
 
-        photos.forEach(filename => {
+        photos.forEach((photo) => {
+            const filename = photo.filename;
             const card = document.createElement('div');
             card.className = 'photo-card';
-            const imgPath = `/static/uploads/gallery/${filename}`;
+            const imgPath = photo.src;
             const isSelected = selectedPhotos.includes(filename);
             
             if (isSelected) {
@@ -799,7 +800,7 @@ function updateShowcaseCropGuide() {
     const root = document.documentElement;
     if (!root) return;
     const mainApp = document.getElementById('main-app');
-    const showcase = document.getElementById('showcase-slider-container') || document.getElementById('hero-slider-container');
+    const showcase = document.getElementById('showcase-slider-container');
     const mainContent = document.querySelector('.main-content');
     if (!mainApp || !showcase || !mainContent) return;
 
@@ -837,8 +838,6 @@ function updateShowcaseCropGuide() {
     root.style.setProperty('--showcase-closed-right-inset', `${closedInsets.right}%`);
 }
 
-const updateHeroCropGuide = updateShowcaseCropGuide;
-
 const showcaseCropState = {
     filename: null,
     imageSrc: null,
@@ -858,10 +857,10 @@ const showcaseCropState = {
 
 function getShowcaseCropElements() {
     return {
-        modal: document.getElementById('showcase-crop-modal') || document.getElementById('hero-crop-modal'),
-        stage: document.getElementById('showcase-crop-stage') || document.getElementById('hero-crop-stage'),
-        image: document.getElementById('showcase-crop-image') || document.getElementById('hero-crop-image'),
-        zoom: document.getElementById('showcase-crop-zoom') || document.getElementById('hero-crop-zoom'),
+        modal: document.getElementById('showcase-crop-modal'),
+        stage: document.getElementById('showcase-crop-stage'),
+        image: document.getElementById('showcase-crop-image'),
+        zoom: document.getElementById('showcase-crop-zoom'),
     };
 }
 
@@ -933,7 +932,12 @@ async function openShowcaseCropModal(filename, btnElement) {
     updateShowcaseCropGuide();
 
     showcaseCropState.filename = filename;
-    showcaseCropState.imageSrc = `/static/uploads/gallery/${filename}`;
+    const galleryResponse = await fetch('/api/gallery');
+    const galleryPhotos = await galleryResponse.json();
+    const selectedPhoto = galleryPhotos.find((photo) => photo.filename === filename);
+    if (!selectedPhoto) return;
+
+    showcaseCropState.imageSrc = selectedPhoto.src;
     showcaseCropState.triggerButton = btnElement || null;
     showcaseCropState.offsetX = 0;
     showcaseCropState.offsetY = 0;
@@ -1043,15 +1047,6 @@ async function toggleShowcasePhoto(filename, btnElement) {
 
     openShowcaseCropModal(filename, btnElement);
 }
-
-const getHeroCropElements = getShowcaseCropElements;
-const applyHeroCropTransform = applyShowcaseCropTransform;
-const nudgeHeroCrop = nudgeShowcaseCrop;
-const initHeroCropInteractions = initShowcaseCropInteractions;
-const openHeroCropModal = openShowcaseCropModal;
-const closeHeroCropModal = closeShowcaseCropModal;
-const saveHeroCrop = saveShowcaseCrop;
-const toggleHeroPhoto = toggleShowcasePhoto;
 
 /**
  * Handle deleting a photo from the gallery
@@ -3440,7 +3435,7 @@ window.addEventListener('load', loadShowcaseSlider);
 let sliderInterval; // 宣告計時器
 
 async function loadShowcaseSlider() {
-    const container = document.getElementById('showcase-slider-container') || document.getElementById('hero-slider-container');
+    const container = document.getElementById('showcase-slider-container');
     if (!container) return;
 
     try {
@@ -3475,8 +3470,6 @@ async function loadShowcaseSlider() {
     }
 }
 
-const loadHeroSlider = loadShowcaseSlider;
-
 function startSliderTimer() {
     clearInterval(sliderInterval);
     sliderInterval = setInterval(() => {
@@ -3485,7 +3478,7 @@ function startSliderTimer() {
 }
 
 function nextSlide() {
-    const slides = document.querySelectorAll('.showcase-slide, .hero-slide');
+    const slides = document.querySelectorAll('.showcase-slide');
     if (slides.length <= 1) return;
 
     let currentIndex = Array.from(slides).findIndex(slide => slide.classList.contains('active'));
@@ -3495,7 +3488,7 @@ function nextSlide() {
 }
 
 function goToSlide(index) {
-    const slides = document.querySelectorAll('.showcase-slide, .hero-slide');
+    const slides = document.querySelectorAll('.showcase-slide');
     const dots = document.querySelectorAll('.dot');
     
     // 移除舊的 active
