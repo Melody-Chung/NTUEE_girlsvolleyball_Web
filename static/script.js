@@ -946,14 +946,20 @@ async function openShowcaseCropModal(filename, btnElement) {
     modal.style.display = 'flex';
 
     const loader = new Image();
+    loader.crossOrigin = 'anonymous';
     loader.onload = () => {
         showcaseCropState.naturalWidth = loader.naturalWidth;
         showcaseCropState.naturalHeight = loader.naturalHeight;
+        image.crossOrigin = 'anonymous';
         image.src = showcaseCropState.imageSrc;
         requestAnimationFrame(() => {
             showcaseCropState.baseScale = Math.max(stage.clientWidth / loader.naturalWidth, stage.clientHeight / loader.naturalHeight);
             applyShowcaseCropTransform();
         });
+    };
+    loader.onerror = () => {
+        alert('Failed to load the image for cropping.');
+        closeShowcaseCropModal();
     };
     loader.src = showcaseCropState.imageSrc;
 }
@@ -988,36 +994,48 @@ async function saveShowcaseCrop() {
     ctx.fillRect(0, 0, outputWidth, outputHeight);
 
     const img = new Image();
+    img.crossOrigin = 'anonymous';
     img.onload = async () => {
-        const ratioX = outputWidth / stageWidth;
-        const ratioY = outputHeight / stageHeight;
-        ctx.drawImage(img, imageLeft * ratioX, imageTop * ratioY, displayWidth * ratioX, displayHeight * ratioY);
-        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
-        if (!blob) return;
+        try {
+            const ratioX = outputWidth / stageWidth;
+            const ratioY = outputHeight / stageHeight;
+            ctx.drawImage(img, imageLeft * ratioX, imageTop * ratioY, displayWidth * ratioX, displayHeight * ratioY);
+            const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+            if (!blob) {
+                alert('Failed to create the cropped image.');
+                return;
+            }
 
-        const formData = new FormData();
-        formData.append('filename', showcaseCropState.filename);
-        formData.append('crop', blob, `${showcaseCropState.filename.replace(/\.[^.]+$/, '')}_showcase.jpg`);
-        const response = await fetch('/api/showcase_photo_crop', { method: 'POST', body: formData });
-        if (!response.ok) {
+            const formData = new FormData();
+            formData.append('filename', showcaseCropState.filename);
+            formData.append('crop', blob, `${showcaseCropState.filename.replace(/\.[^.]+$/, '')}_showcase.jpg`);
+            const response = await fetch('/api/showcase_photo_crop', { method: 'POST', body: formData });
+            if (!response.ok) {
+                alert('Failed to save showcase crop.');
+                return;
+            }
+
+            const selectedResponse = await fetch('/api/showcase_photos');
+            let selectedPhotos = await selectedResponse.json();
+            if (!selectedPhotos.includes(showcaseCropState.filename)) {
+                selectedPhotos.push(showcaseCropState.filename);
+                await fetch('/api/showcase_photos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ photos: selectedPhotos }),
+                });
+            }
+
+            closeShowcaseCropModal();
+            await loadGallery();
+            loadShowcaseSlider();
+        } catch (error) {
+            console.error('Failed to save showcase crop:', error);
             alert('Failed to save showcase crop.');
-            return;
         }
-
-        const selectedResponse = await fetch('/api/showcase_photos');
-        let selectedPhotos = await selectedResponse.json();
-        if (!selectedPhotos.includes(showcaseCropState.filename)) {
-            selectedPhotos.push(showcaseCropState.filename);
-            await fetch('/api/showcase_photos', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ photos: selectedPhotos }),
-            });
-        }
-
-        closeShowcaseCropModal();
-        await loadGallery();
-        loadShowcaseSlider();
+    };
+    img.onerror = () => {
+        alert('Failed to load the cropped image data.');
     };
     img.src = showcaseCropState.imageSrc;
 }
