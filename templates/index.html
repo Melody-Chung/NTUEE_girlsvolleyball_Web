@@ -61,7 +61,7 @@
 
     </div>
 
-    <div class="app-container" id="main-app" style="display: flex;">
+    <div class="app-container sidebar-toggled" id="main-app" style="display: flex;">
         <nav class="sidebar">
             <ul class="menu-list">
                 <li onclick="showSection('home')" class="active">Home Overview</li>
@@ -75,8 +75,16 @@
 
         <main class="main-content">
             <header class="top-bar">
-                <div class="sidebar-toggle" onclick="toggleSidebar()">
-                    <i class="fas fa-bars"></i>
+                <div class="sidebar-toggle-wrapper">
+                    <div class="sidebar-toggle" onclick="toggleSidebar()">
+                        <i class="fas fa-bars"></i>
+                    </div>
+                    <div id="sidebar-toggle-hint" class="sidebar-toggle-hint" aria-hidden="true">
+                        <span class="sidebar-toggle-hint__arrow">
+                            <i class="fas fa-long-arrow-alt-left"></i>
+                        </span>
+                        <span class="sidebar-toggle-hint__text">點這裡展開選單</span>
+                    </div>
                 </div>
                 <h1 id="app-title">台大電機女排</h1>
                 <div class="user-profile">

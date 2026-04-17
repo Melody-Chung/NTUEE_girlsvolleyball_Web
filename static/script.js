@@ -2,6 +2,8 @@
 // 1. Initialization and Layout Navigation
 // ==========================================
 
+let sidebarHintTimer = null;
+
 document.addEventListener('DOMContentLoaded', () => {
     // 1. 取得目前的權限狀態
     const savedUsername = localStorage.getItem('vbt_username');
@@ -16,6 +18,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // 4. 如果有存檔的資訊，更新使用者名稱等 UI
     if (savedUsername && savedRole) {
         applyLoginUI(savedUsername, savedRole);
+    } else {
+        window.setTimeout(showSidebarToggleHint, 500);
     }
 });
 
@@ -44,7 +48,30 @@ function refreshUIByRole(role) {
 function toggleSidebar() {
     const mainApp = document.getElementById('main-app');
     mainApp.classList.toggle('sidebar-toggled');
+    hideSidebarToggleHint();
     updateShowcaseCropGuide();
+}
+
+function showSidebarToggleHint() {
+    const hint = document.getElementById('sidebar-toggle-hint');
+    if (!hint) return;
+
+    window.clearTimeout(sidebarHintTimer);
+    hint.classList.remove('visible');
+    void hint.offsetWidth;
+    hint.classList.add('visible');
+
+    sidebarHintTimer = window.setTimeout(() => {
+        hint.classList.remove('visible');
+    }, 4500);
+}
+
+function hideSidebarToggleHint() {
+    const hint = document.getElementById('sidebar-toggle-hint');
+    if (!hint) return;
+
+    window.clearTimeout(sidebarHintTimer);
+    hint.classList.remove('visible');
 }
 
 function showSection(sectionId) {
@@ -273,6 +300,7 @@ function applyLoginUI(username, role) {
     }
     loadGallery();
     loadCourtStatus();
+    window.setTimeout(showSidebarToggleHint, 300);
 }
 
 function handleLogout() {
