@@ -1,5 +1,6 @@
 import os
 import requests
+import urllib3
 import time
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -19,6 +20,9 @@ def fetch_and_parse_schedule():
         'Origin': 'https://rent.pe.ntu.edu.tw/' 
     }
 
+    # 加上這行：叫 Python 閉嘴，不要在終端機一直噴「這是不安全連線」的警告
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    
     # --- Step 1: Authentication ---
     print("Step 1: Attempting to log into the system...")
     login_data = {
@@ -26,7 +30,7 @@ def fetch_and_parse_schedule():
         'user_pw': config.PASSWORD
     }
     try:
-        login_resp = session.post(config.LOGIN_URL, data=login_data, headers=headers)
+        login_resp = session.post(config.LOGIN_URL, data=login_data, headers=headers, verify=False)
         time.sleep(1)
         if login_resp.status_code != 200:
             print("Login request failed.")
@@ -38,7 +42,7 @@ def fetch_and_parse_schedule():
     # --- Step 2: Extracting security token (EnV) ---
     print("Step 2: Extracting security token (EnV)...")
     try:
-        base_resp = session.get(config.BASE_PAGE_URL, headers=headers)
+        base_resp = session.get(config.BASE_PAGE_URL, headers=headers, verify=False)
         soup_base = BeautifulSoup(base_resp.text, 'html.parser')
         
         env_token = ""
@@ -88,7 +92,7 @@ def fetch_and_parse_schedule():
 
         schedule_html = ""
         try:
-            api_resp = session.post(config.SCHEDULE_API_URL, data=payload, headers=headers, timeout=10)
+            api_resp = session.post(config.SCHEDULE_API_URL, data=payload, headers=headers, verify=False, timeout=10)
             if api_resp.status_code == 200:
                 try:
                     data = api_resp.json()
