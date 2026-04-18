@@ -1786,9 +1786,8 @@ function renderPlanSources() {
         ${generated.length ? `
             <div class="menu-result-summary">
                 <div>
-                    <div class="menu-result-summary__eyebrow">系統建議菜單</div>
-                    <h4>Recommended Training Plan</h4>
-                    ${isCaptain ? `<p>${escapeHtml(String(generated.length))} drills ready to drag.</p>` : ''}
+                    <h4>系統建議菜單</h4>
+                    ${isCaptain ? `<p>${escapeHtml(String(generated.length))} 個項目可拖曳</p>` : ''}
                 </div>
             </div>
             <div class="menu-source-grid">
@@ -1798,9 +1797,8 @@ function renderPlanSources() {
         ${matching.length ? `
             <div class="menu-result-summary" style="margin-top:18px;">
                 <div>
-                    <div class="menu-result-summary__eyebrow">符合條件項目</div>
-                    <h4>All Matching Drills</h4>
-                    ${isCaptain ? `<p>${escapeHtml(String(matching.length))} drills available to drag.</p>` : ''}
+                    <h4>符合條件項目</h4>
+                    ${isCaptain ? `<p>${escapeHtml(String(matching.length))} 個項目可拖曳</p>` : ''}
                 </div>
             </div>
             <div class="menu-source-grid">
@@ -2824,7 +2822,7 @@ function renderCourtTable(monthId, containerId) {
                     <button class="court-btn" onclick="saveCourtStatus()">儲存表格</button>
                     <button class="court-btn" onclick="toggleEditMode(false)">取消編輯</button>
                 ` : `
-                    <button class="court-btn" onclick="toggleNames()">隱藏 / 隱藏名稱</button>
+                    <button class="court-btn" onclick="toggleNames()">隱藏 / 顯示名稱</button>
                     <button class="court-btn" onclick="downloadCourtTableAsPng('${monthId}')">下載 PNG</button>
                 `}
             </div>
@@ -2837,7 +2835,7 @@ function renderCourtTable(monthId, containerId) {
             <table class="court-table">
                 <thead>
                     <tr>
-                        <th>Date / Weekday</th>
+                        <th>日期</th>
                         <th>18:00 - 20:00</th>
                         <th>20:00 - 22:00</th>
                     </tr>
@@ -2958,18 +2956,18 @@ function renderCourtSlotEditor(slotData, rowDate, slotKey) {
             <div class="court-edit-field">
                 <label>Color</label>
                 <select onchange="updateCourtCell('${rowDate}', '${slotKey}', 'color', this.value)">
-                    <option value="none" ${normalized.color === 'none' ? 'selected' : ''}>None</option>
-                    <option value="yellow" ${normalized.color === 'yellow' ? 'selected' : ''}>Yellow</option>
-                    <option value="blue" ${normalized.color === 'blue' ? 'selected' : ''}>Blue</option>
+                    <option value="none" ${normalized.color === 'none' ? 'selected' : ''}>無色</option>
+                    <option value="yellow" ${normalized.color === 'yellow' ? 'selected' : ''}>黃色</option>
+                    <option value="blue" ${normalized.color === 'blue' ? 'selected' : ''}>藍色</option>
                 </select>
             </div>
             <div class="court-edit-field">
                 <label>Line 1</label>
-                <input type="text" value="${escapeHtml(normalized.line1)}" placeholder="Court 4" oninput="updateCourtCell('${rowDate}', '${slotKey}', 'line1', this.value)">
+                <input type="text" value="${escapeHtml(normalized.line1)}" placeholder="場 4, 5, 6, 7" oninput="updateCourtCell('${rowDate}', '${slotKey}', 'line1', this.value)">
             </div>
             <div class="court-edit-field">
                 <label>Line 2</label>
-                <input type="text" value="${escapeHtml(normalized.line2)}" placeholder="Department or note" oninput="updateCourtCell('${rowDate}', '${slotKey}', 'line2', this.value)">
+                <input type="text" value="${escapeHtml(normalized.line2)}" placeholder="預約系所或紀錄" oninput="updateCourtCell('${rowDate}', '${slotKey}', 'line2', this.value)">
             </div>
         </td>
     `;
@@ -3239,8 +3237,15 @@ function normalizeLotterySlot(slotData) {
 }
 
 function normalizeLotteryRow(row) {
+    const normalizedDate = normalizeCourtDateValue(row.date);
+    
+    const dateObj = new Date(normalizedDate);
+    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+    const weekdayStr = weekdays[dateObj.getDay()];
+
     return {
-        date: normalizeCourtDateValue(row.date),
+        date: normalizedDate,
+        weekday: weekdayStr,
         slot1: normalizeLotterySlot(row.slot1 || {}),
         slot2: normalizeLotterySlot(row.slot2 || {})
     };
@@ -3390,7 +3395,7 @@ function renderLotteryTable(monthId, containerId) {
             <table class="court-table lottery-table">
                 <thead>
                     <tr>
-                        <th>日期 / 星期</th>
+                        <th>日期</th>
                         <th>18:00 - 20:00</th>
                         <th>20:00 - 22:00</th>
                     </tr>
@@ -3402,7 +3407,7 @@ function renderLotteryTable(monthId, containerId) {
         html += '<tr><td colspan="3" style="color:#999; padding: 20px;">目前沒有投籤資料。</td></tr>';
     } else {
         tableData.forEach((row) => {
-            html += `<tr><td><strong>${row.date}</strong></td>`;
+            html += `<tr><td><strong>${row.date} (${row.weekday})</strong></td>`;
             html += isEditing ? renderLotterySlotEditor(row.slot1, row.date, 'slot1') : renderLotterySlotDisplay(row.slot1);
             html += isEditing ? renderLotterySlotEditor(row.slot2, row.date, 'slot2') : renderLotterySlotDisplay(row.slot2);
             html += '</tr>';
@@ -3724,7 +3729,7 @@ function renderStrategyTable(rows, summaryLabel, selectedCourts) {
     if (!Array.isArray(rows) || rows.length === 0) return '<p style="text-align:center; color:#999; padding: 20px;">資料不足，無法產生策略建議。</p>';
     const days = groupStrategyRows(rows);
     let html = `<div class="strategy-note">${escapeHtml(summaryLabel)}</div>`;
-    html += '<div class="court-dashboard-container"><div class="probability-matrix"><table class="court-table probability-table"><thead><tr><th>Date / Weekday</th>';
+    html += '<div class="court-dashboard-container"><div class="probability-matrix"><table class="court-table probability-table"><thead><tr><th>日期</th>';
     selectedCourts.forEach((court) => { html += `<th>${court}<br><small>18-20 / 20-22</small></th>`; });
     html += '<th>Slot Success<br><small>18-20 / 20-22</small></th><th>Daily Success</th></tr></thead><tbody>';
 

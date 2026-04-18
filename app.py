@@ -1717,6 +1717,7 @@ def get_strategy():
     return jsonify(
         {
             "best_court": "Court 5",
+            "best_court": "場 5",
             "suggestion": "建議把籤數集中在星期四下半場。",
         }
     )
