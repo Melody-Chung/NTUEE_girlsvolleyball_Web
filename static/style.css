@@ -2222,11 +2222,16 @@ html, body, .app-container {
 .content-wrapper {
     overflow-y: auto !important;
     overflow-x: hidden !important;
-    height: 100%; /* 確保它能撐滿畫面來滾動 */
     
-    /* Firefox 專用設定 */
+    flex: 1; 
+    padding: 50px 50px 0 50px;
+    
+    display: flex;
+    flex-direction: column;
+    
     scrollbar-width: thin !important;
     scrollbar-color: rgba(160, 160, 160, 0.5) transparent !important;
+    gap: 50px;
 }
 
 /* 3. 🌟 精準打擊：把懸浮膠囊只綁在內容區塊上，避開系統強制覆蓋 */

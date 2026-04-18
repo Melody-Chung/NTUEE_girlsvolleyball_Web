@@ -4180,11 +4180,16 @@ function renderFooter() {
     };
 
     const parts = [];
+
     if (currentFooterData.captainText) parts.push(`隊長：${makeLink(currentFooterData.captainText, currentFooterData.captainLink)}`);
     if (currentFooterData.viceText) parts.push(`副隊長：${makeLink(currentFooterData.viceText, currentFooterData.viceLink)}`);
     if (currentFooterData.igText) parts.push(`IG：${makeLink(currentFooterData.igText, currentFooterData.igLink)}`);
 
-    container.innerHTML = parts.join(' <span style="color:#ccc; margin: 0 8px;">|</span> ');
+    if (parts.length > 0) {
+        container.innerHTML = `<strong style="margin-right: 5px;">聯絡資訊     </strong> ` + parts.join(' <span style="color:#ccc; margin: 0 8px;">|</span> ');
+    } else {
+        container.innerHTML = '';
+    }
 }
 
 function openEditFooter() {
