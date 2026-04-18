@@ -236,6 +236,92 @@ def resolve_showcase_crop_path(filename):
     return filename or ""
 
 
+TEAM_RESOURCES_KEY = "team_resources"
+TEAM_RESOURCE_VISIBILITIES = {"captain", "all"}
+VIDEO_SECTION_ORDER_KEY = "video_section_order"
+
+
+def default_team_resources_payload():
+    return {"sections": []}
+
+
+def get_team_resources_payload():
+    payload = get_system_data_json(TEAM_RESOURCES_KEY, default_team_resources_payload())
+    if not isinstance(payload, dict):
+        return default_team_resources_payload()
+
+    normalized_sections = []
+    for section in payload.get("sections", []):
+        if not isinstance(section, dict):
+            continue
+        section_id = str(section.get("id") or uuid4())
+        visibility = str(section.get("visibility") or "captain").strip().lower()
+        if visibility not in TEAM_RESOURCE_VISIBILITIES:
+            visibility = "captain"
+        notes = section.get("notes")
+        resources = section.get("resources")
+        normalized_sections.append(
+            {
+                "id": section_id,
+                "title": str(section.get("title") or "").strip(),
+                "visibility": visibility,
+                "created_at": section.get("created_at") or datetime.now().isoformat(timespec="seconds"),
+                "notes": notes if isinstance(notes, list) else [],
+                "resources": [
+                    {
+                        "id": str(item.get("id") or uuid4()),
+                        "title": str(item.get("title") or "").strip(),
+                        "url": str(item.get("url") or "").strip(),
+                        "created_at": item.get("created_at") or datetime.now().isoformat(timespec="seconds"),
+                    }
+                    for item in (resources if isinstance(resources, list) else [])
+                    if isinstance(item, dict) and str(item.get("url") or "").strip()
+                ],
+            }
+        )
+
+    return {"sections": normalized_sections}
+
+
+def save_team_resources_payload(payload):
+    set_system_data_json(TEAM_RESOURCES_KEY, payload)
+
+
+def is_allowed_google_resource_url(url):
+    normalized = str(url or "").strip().lower()
+    return normalized.startswith("https://docs.google.com/")
+
+
+def filter_team_sections_by_role(sections, role):
+    normalized_role = str(role or "").strip().lower()
+    if normalized_role == "captain":
+        return sections
+    return [section for section in sections if section.get("visibility") == "all"]
+
+
+def get_video_section_order():
+    order = get_system_data_json(VIDEO_SECTION_ORDER_KEY, [])
+    return [int(item) for item in order if str(item).isdigit()] if isinstance(order, list) else []
+
+
+def save_video_section_order(order):
+    normalized = [int(item) for item in order if str(item).isdigit()]
+    set_system_data_json(VIDEO_SECTION_ORDER_KEY, normalized)
+
+
+def sort_sections_by_saved_order(sections, order):
+    order_map = {str(section_id): index for index, section_id in enumerate(order or [])}
+    ordered_sections = []
+    remaining_sections = []
+    for section in sections:
+        if str(section.get("id")) in order_map:
+            ordered_sections.append(section)
+        else:
+            remaining_sections.append(section)
+    ordered_sections.sort(key=lambda section: order_map.get(str(section.get("id")), 0))
+    return ordered_sections + remaining_sections
+
+
 LOTTERY_COURTS = ["Court 4", "Court 5", "Court 6", "Court 7"]
 LOTTERY_TIMES = {"slot1": "18:00-20:00", "slot2": "20:00-22:00"}
 LOTTERY_WEEKDAY_NAMES = ["一", "二", "三", "四", "五", "六", "日"]
@@ -1050,6 +1136,144 @@ def delete_video():
         return jsonify({"status": "error"}), 400
 
     sb_delete("videos", [("eq", "id", video_id)])
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/team_resources", methods=["GET"])
+def get_team_resources():
+    role = (request.args.get("role") or "").strip().lower()
+    payload = get_team_resources_payload()
+    sections = filter_team_sections_by_role(payload.get("sections", []), role)
+    return jsonify(sort_sections_by_saved_order(sections, get_video_section_order()))
+
+
+@app.route("/api/video_sections/reorder", methods=["POST"])
+def reorder_video_sections():
+    data = request.json or {}
+    order = data.get("order", [])
+    if not isinstance(order, list):
+        return jsonify({"error": "Invalid order format"}), 400
+    save_video_section_order(order)
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/team_resources/sections", methods=["POST"])
+def create_team_resource_section():
+    data = request.json or {}
+    title = (data.get("title") or "").strip()
+    visibility = (data.get("visibility") or "captain").strip().lower()
+    if not title:
+        return jsonify({"error": "Missing title"}), 400
+    if visibility not in TEAM_RESOURCE_VISIBILITIES:
+        return jsonify({"error": "Invalid visibility"}), 400
+
+    payload = get_team_resources_payload()
+    section = {
+        "id": str(uuid4()),
+        "title": title,
+        "visibility": visibility,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "notes": [],
+        "resources": [],
+    }
+    payload["sections"] = [section, *(payload.get("sections") or [])]
+    save_team_resources_payload(payload)
+    return jsonify({"status": "success", "section": section})
+
+
+@app.route("/api/team_resources/sections/<section_id>", methods=["DELETE"])
+def delete_team_resource_section(section_id):
+    payload = get_team_resources_payload()
+    sections = payload.get("sections") or []
+    next_sections = [section for section in sections if section.get("id") != section_id]
+    deleted = len(next_sections) != len(sections)
+    payload["sections"] = next_sections
+    save_team_resources_payload(payload)
+    return jsonify({"status": "success", "deleted": deleted})
+
+
+@app.route("/api/team_resources/sections/<section_id>/notes", methods=["POST"])
+def save_team_resource_notes(section_id):
+    data = request.json or {}
+    notes = data.get("notes", [])
+    if not isinstance(notes, list):
+        return jsonify({"error": "Invalid notes format"}), 400
+
+    payload = get_team_resources_payload()
+    updated = False
+    for section in payload.get("sections", []):
+        if section.get("id") == section_id:
+            section["notes"] = notes
+            updated = True
+            break
+
+    if updated:
+        save_team_resources_payload(payload)
+    return jsonify({"status": "success", "updated": updated})
+
+
+@app.route("/api/team_resources/items", methods=["POST"])
+def add_team_resource_item():
+    data = request.json or {}
+    url = (data.get("url") or "").strip()
+    title = (data.get("title") or "").strip()
+    section_id = (data.get("section_id") or "").strip()
+    if not section_id or not url:
+        return jsonify({"error": "Missing section_id or url"}), 400
+    if not is_allowed_google_resource_url(url):
+        return jsonify({"error": "Only Google Docs or Google Sheets links are allowed"}), 400
+
+    payload = get_team_resources_payload()
+    created_item = None
+    for section in payload.get("sections", []):
+        if section.get("id") == section_id:
+            created_item = {
+                "id": str(uuid4()),
+                "title": title,
+                "url": url,
+                "created_at": datetime.now().isoformat(timespec="seconds"),
+            }
+            section["resources"] = [created_item, *(section.get("resources") or [])]
+            break
+
+    if created_item is None:
+        return jsonify({"error": "Section not found"}), 404
+
+    save_team_resources_payload(payload)
+    return jsonify({"status": "success", "item": created_item})
+
+
+@app.route("/api/team_resources/items/<item_id>", methods=["DELETE"])
+def delete_team_resource_item(item_id):
+    payload = get_team_resources_payload()
+    deleted = False
+    for section in payload.get("sections", []):
+        resources = section.get("resources") or []
+        next_resources = [item for item in resources if item.get("id") != item_id]
+        if len(next_resources) != len(resources):
+            section["resources"] = next_resources
+            deleted = True
+            break
+
+    if deleted:
+        save_team_resources_payload(payload)
+    return jsonify({"status": "success", "deleted": deleted})
+
+
+@app.route("/api/team_resources/reorder", methods=["POST"])
+def reorder_team_resource_sections():
+    data = request.json or {}
+    order = data.get("order", [])
+    if not isinstance(order, list):
+        return jsonify({"error": "Invalid order format"}), 400
+
+    payload = get_team_resources_payload()
+    sections = payload.get("sections") or []
+    section_map = {str(section.get("id")): section for section in sections}
+    ordered_sections = [section_map[section_id] for section_id in order if str(section_id) in section_map]
+    remaining_sections = [section for section in sections if str(section.get("id")) not in set(str(item) for item in order)]
+    payload["sections"] = ordered_sections + remaining_sections
+    save_team_resources_payload(payload)
     return jsonify({"status": "success"})
 
 @app.route("/api/court_status/<month_id>", methods=["GET", "DELETE"])

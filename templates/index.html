@@ -68,6 +68,7 @@
                 <li onclick="showSection('schedule')">場地狀態</li>
                 <li onclick="showSection('strategy')" class="captain-only auth-only">機率與策略</li>
                 <li onclick="showSection('menu')" class="auth-only">訓練菜單</li>
+                <li onclick="showSection('team-data')" class="auth-only">球隊資料</li>
                 <li onclick="showSection('videos')" class="auth-only">比賽分析與影片</li> 
                 <li onclick="showSection('approval')" class="captain-only auth-only">帳號審核</li>
             </ul>
@@ -129,12 +130,16 @@
                     <div class="showcase-slider-container" id="showcase-slider-container" style="display: none;">
                         </div>
                     <div class="announcement-card card">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                            <h3 style="margin:0;">公告</h3>
-                            <button class="primary-btn-sm captain-only auth-only" onclick="openEditAnnouncement()" style="padding: 4px 12px; font-size: 0.85rem;">編輯</button>
+                        <div class="announcement-card__header">
+                            <div class="announcement-card__copy">
+                                <span class="announcement-card__eyebrow">Team Updates</span>
+                                <h3>公告</h3>
+                                <p>集中放本週提醒、比賽資訊與重要通知。</p>
+                            </div>
+                            <button class="primary-btn-sm captain-only auth-only announcement-card__edit" onclick="openEditAnnouncement()">編輯</button>
                         </div>
-                        <div id="announcement-content">
-                            <p style="color:#999;">公告載入中...</p>
+                        <div id="announcement-content" class="announcement-card__body">
+                            <p class="announcement-empty">公告載入中...</p>
                         </div>
                     </div>
                     
@@ -406,10 +411,10 @@
                                     <button type="button" class="court-btn" onclick="importMenuCsv()">匯入 CSV</button>
                                 </div>
                                 <div id="menu-import-status" class="menu-import-status"></div>
-                                <div class="menu-editor-actions">
-                                    <button type="button" class="court-btn" onclick="startCreateMenuItem()">新增菜單</button>
-                                    <button type="button" class="court-btn" onclick="saveMenuItem()">儲存菜單</button>
-                                </div>
+                            </div>
+                            <div class="menu-editor-actions">
+                                <button type="button" class="court-btn" onclick="startCreateMenuItem()">新增菜單</button>
+                                <button type="button" class="court-btn" onclick="saveMenuItem()">儲存菜單</button>
                             </div>
                             <div class="menu-editor-layout">
                                 <div class="menu-editor-form">
@@ -526,14 +531,14 @@
                         </div>
                         <div class="menu-builder-layout">
                             <div class="menu-builder-half">
-                                <div id="menu-first-half-zone" class="menu-drop-zone" ondragover="handlePracticeMenuDragOver(event)" ondrop="handlePracticeMenuDrop(event, 'first_half')"></div>
+                                <div id="menu-first-half-zone" class="menu-drop-zone" ondragover="handlePracticeMenuDragOver(event)" ondragleave="handlePracticeMenuDragLeave(event)" ondrop="handlePracticeMenuDrop(event, 'first_half')"></div>
                                 <div class="menu-manual-add">
                                     <input type="text" id="menu-first-half-manual" placeholder="輸入菜單名稱...">
                                     <button type="button" class="court-btn" onclick="addManualPracticeMenuItem('first_half')">加入</button>
                                 </div>
                             </div>
                             <div class="menu-builder-half">
-                                <div id="menu-second-half-zone" class="menu-drop-zone" ondragover="handlePracticeMenuDragOver(event)" ondrop="handlePracticeMenuDrop(event, 'second_half')"></div>
+                                <div id="menu-second-half-zone" class="menu-drop-zone" ondragover="handlePracticeMenuDragOver(event)" ondragleave="handlePracticeMenuDragLeave(event)" ondrop="handlePracticeMenuDrop(event, 'second_half')"></div>
                                 <div class="menu-manual-add">
                                     <input type="text" id="menu-second-half-manual" placeholder="輸入菜單名稱...">
                                     <button type="button" class="court-btn" onclick="addManualPracticeMenuItem('second_half')">加入</button>
@@ -542,6 +547,41 @@
                         </div>
                     </div>
                     <div id="menu-result" class="result-container"></div>
+                </div>
+
+                <div id="team-data" class="content-section" style="display:none;">
+                    <h3 class="section-title">球隊資料</h3>
+
+                    <div class="card video-control-card captain-only auth-only">
+                        <div class="video-control-grid">
+                            <div class="video-control-block">
+                                <div class="video-control-block__header">
+                                    <h4 style="margin: 0;">新增資料分類</h4>
+                                    <button class="primary-btn" onclick="createTeamResourceSection()" style="padding: 6px 16px; font-size: 0.9em;">建立</button>
+                                </div>
+                                <div class="team-resource-section-grid">
+                                    <input type="text" id="team-resource-section-title" placeholder="例如：比賽資訊 / 現任資料 / 歷屆資料" class="video-control-input">
+                                    <select id="team-resource-section-visibility" class="video-control-input">
+                                        <option value="captain">只有隊長可見</option>
+                                        <option value="all">隊長隊員可見</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="video-control-block">
+                                <div class="video-control-block__header">
+                                    <h4 style="margin: 0;">加入 Google 文件</h4>
+                                    <button class="primary-btn" onclick="addTeamResourceItem()" style="padding: 6px 16px; font-size: 0.9em;">加入</button>
+                                </div>
+                                <div class="video-add-grid">
+                                    <select id="team-resource-section-select" class="video-control-input"></select>
+                                    <input type="text" id="team-resource-title" placeholder="文件名稱" class="video-control-input">
+                                    <input type="text" id="team-resource-url" placeholder="Google Docs / Sheets 連結..." class="video-control-input">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="team-resource-sections-container" class="video-sections-container"></div>
                 </div>
 
                 <div id="videos" class="content-section" style="display:none;">
@@ -649,7 +689,7 @@
             </div>
             <div id="video-notes-list" class="video-notes-list"></div>
             <div class="video-notes-modal__toolbar">
-                <button type="button" class="court-btn" onclick="addVideoNoteRow()">新增比賽筆記</button>
+                <button type="button" class="court-btn" onclick="addVideoNoteRow()">新增筆記</button>
             </div>
             <div class="video-notes-modal__actions">
                 <button type="button" class="court-btn" onclick="closeVideoNotesModal()">取消</button>

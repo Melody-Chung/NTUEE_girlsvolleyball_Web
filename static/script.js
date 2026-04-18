@@ -331,6 +331,7 @@ function applyLoginUI(username, role) {
     }
     loadGallery();
     loadCourtStatus();
+    loadTeamResources();
     window.setTimeout(showSidebarToggleHint, 300);
 }
 
@@ -512,11 +513,35 @@ async function changeUserRole(userId, newRole) {
 
 let videoSectionsState = [];
 let activeVideoNotesSectionId = null;
+let teamResourceSectionsState = [];
+let activeTeamResourceNotesSectionId = null;
+let activeNotesScope = 'video';
+let sectionDragState = null;
 
 function getYouTubeVideoId(url) {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
     const match = String(url || '').match(regExp);
     return (match && match[2] && match[2].length === 11) ? match[2] : null;
+}
+
+function isCaptainRole() {
+    return localStorage.getItem('vbt_role') === 'captain';
+}
+
+function buildSectionReorderHandle(scope, sectionId) {
+    if (!isCaptainRole()) return '';
+    return `
+        <button
+            type="button"
+            class="section-reorder-handle"
+            draggable="true"
+            title="拖曳調整順序"
+            ondragstart="handleSectionDragStart(event, '${scope}', '${sectionId}')"
+            ondragend="handleSectionDragEnd()"
+        >
+            <i class="fas fa-grip-vertical"></i>
+        </button>
+    `;
 }
 
 function updateVideoSectionSelect() {
@@ -564,9 +589,10 @@ function renderVideoSections() {
     }
 
     container.innerHTML = sections.map((section) => `
-        <div class="video-section-card">
+        <div class="video-section-card" data-section-scope="video" data-section-id="${section.id}" ondragover="handleSectionDragOver(event, 'video', '${section.id}')" ondrop="handleSectionDrop(event, 'video', '${section.id}')" ondragleave="handleSectionDragLeave(event)">
             <div class="video-section-card__header">
                 <div class="video-section-card__title">
+                    ${buildSectionReorderHandle('video', section.id)}
                     <h4>${escapeHtml(section.title)}</h4>
                     <button type="button" class="video-section-card__meta" onclick="openVideoNotesModal(${section.id})">
                         <i class="fas fa-file-alt"></i>
@@ -593,6 +619,232 @@ async function loadVideoSections() {
         renderVideoSections();
     } catch (error) {
         console.error('Failed to load video sections', error);
+    }
+}
+
+function updateTeamResourceSectionSelect() {
+    const select = document.getElementById('team-resource-section-select');
+    if (!select) return;
+    const sections = Array.isArray(teamResourceSectionsState) ? teamResourceSectionsState : [];
+    if (!sections.length) {
+        select.innerHTML = '<option value="">請先建立資料分類</option>';
+        return;
+    }
+    select.innerHTML = '<option value="">選擇資料分類</option>' + sections.map((section) => `
+        <option value="${section.id}">${escapeHtml(section.title)}</option>
+    `).join('');
+}
+
+function renderTeamResourceSections() {
+    const container = document.getElementById('team-resource-sections-container');
+    if (!container) return;
+    const sections = Array.isArray(teamResourceSectionsState) ? teamResourceSectionsState : [];
+    if (!sections.length) {
+        container.innerHTML = '<div class="card"><p style="color:#7b8c9b; margin:0;">目前還沒有球隊資料，隊長可以先建立分類並加入 Google 文件。</p></div>';
+        updateTeamResourceSectionSelect();
+        return;
+    }
+
+    container.innerHTML = sections.map((section) => `
+        <div class="video-section-card" data-section-scope="team_resource" data-section-id="${section.id}" ondragover="handleSectionDragOver(event, 'team_resource', '${section.id}')" ondrop="handleSectionDrop(event, 'team_resource', '${section.id}')" ondragleave="handleSectionDragLeave(event)">
+            <div class="video-section-card__header">
+                <div class="video-section-card__title">
+                    ${buildSectionReorderHandle('team_resource', section.id)}
+                    <h4>${escapeHtml(section.title)}</h4>
+                    <button type="button" class="video-section-card__meta" onclick="openTeamResourceNotesModal('${section.id}')">
+                        <i class="fas fa-file-alt"></i>
+                        <span>Notes</span>
+                        <small>${Array.isArray(section.notes) ? section.notes.length : 0}</small>
+                    </button>
+                    ${isCaptainRole() ? `<span class="resource-visibility-chip">${section.visibility === 'all' ? '隊長隊員可見' : '只有隊長可見'}</span>` : ''}
+                </div>
+                ${isCaptainRole() ? `<button type="button" class="video-section-card__delete" onclick="deleteTeamResourceSection('${section.id}')">刪除</button>` : ''}
+            </div>
+            <div class="video-section-card__body">
+                ${section.resources && section.resources.length
+                    ? `<div class="video-section-card__scroller">${section.resources.map((item) => renderTeamResourceCard(item, section.id)).join('')}</div>`
+                    : '<div class="video-section-card__empty">No files in this section yet.</div>'}
+            </div>
+        </div>
+    `).join('');
+    updateTeamResourceSectionSelect();
+}
+
+async function loadTeamResources() {
+    try {
+        const role = localStorage.getItem('vbt_role') || '';
+        const response = await fetch(`/api/team_resources?role=${encodeURIComponent(role)}`);
+        teamResourceSectionsState = await response.json();
+        renderTeamResourceSections();
+    } catch (error) {
+        console.error('Failed to load team resources', error);
+    }
+}
+
+async function createTeamResourceSection() {
+    const input = document.getElementById('team-resource-section-title');
+    const visibilityInput = document.getElementById('team-resource-section-visibility');
+    const title = input ? input.value.trim() : '';
+    const visibility = visibilityInput ? visibilityInput.value : 'captain';
+    if (!title) {
+        alert('請先輸入資料分類名稱。');
+        return;
+    }
+
+    const response = await fetch('/api/team_resources/sections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, visibility }),
+    });
+    if (!response.ok) {
+        alert('建立資料分類失敗。');
+        return;
+    }
+
+    if (input) input.value = '';
+    if (visibilityInput) visibilityInput.value = 'captain';
+    await loadTeamResources();
+}
+
+async function addTeamResourceItem() {
+    const urlInput = document.getElementById('team-resource-url');
+    const titleInput = document.getElementById('team-resource-title');
+    const sectionSelect = document.getElementById('team-resource-section-select');
+    const url = urlInput ? urlInput.value.trim() : '';
+    const title = titleInput ? titleInput.value.trim() : '';
+    const sectionId = sectionSelect ? sectionSelect.value : '';
+
+    if (!sectionId) return alert('請先選擇資料分類。');
+    if (!url) return alert('請先貼上 Google Docs 或 Google Sheets 連結。');
+
+    const response = await fetch('/api/team_resources/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, title, section_id: sectionId }),
+    });
+
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        alert(data.error || '新增資料失敗。');
+        return;
+    }
+
+    if (urlInput) urlInput.value = '';
+    if (titleInput) titleInput.value = '';
+    await loadTeamResources();
+}
+
+async function deleteTeamResourceItem(itemId, sectionId) {
+    if (!confirm('確定要刪除這份球隊資料嗎？')) return;
+    const response = await fetch(`/api/team_resources/items/${itemId}`, { method: 'DELETE' });
+    if (!response.ok) {
+        alert('刪除資料失敗。');
+        return;
+    }
+    await loadTeamResources();
+    if (activeTeamResourceNotesSectionId === sectionId) {
+        openTeamResourceNotesModal(sectionId);
+    }
+}
+
+async function deleteTeamResourceSection(sectionId) {
+    if (!confirm('確定要刪除這個資料分類嗎？裡面的 Google 文件與 notes 也會一起刪除。')) return;
+    const response = await fetch(`/api/team_resources/sections/${sectionId}`, { method: 'DELETE' });
+    if (!response.ok) {
+        alert('刪除資料分類失敗。');
+        return;
+    }
+    if (activeTeamResourceNotesSectionId === sectionId) closeVideoNotesModal();
+    await loadTeamResources();
+}
+
+function clearSectionDragIndicators() {
+    document.querySelectorAll('.video-section-card.section-drop-before, .video-section-card.section-drop-after, .video-section-card.is-section-dragging').forEach((card) => {
+        card.classList.remove('section-drop-before', 'section-drop-after', 'is-section-dragging');
+    });
+}
+
+function handleSectionDragStart(event, scope, sectionId) {
+    if (!isCaptainRole()) return;
+    sectionDragState = { scope, sectionId: String(sectionId) };
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', JSON.stringify(sectionDragState));
+    const card = event.target.closest('.video-section-card');
+    if (card) card.classList.add('is-section-dragging');
+}
+
+function handleSectionDragEnd() {
+    sectionDragState = null;
+    clearSectionDragIndicators();
+}
+
+function handleSectionDragOver(event, scope, sectionId) {
+    if (!isCaptainRole()) return;
+    event.preventDefault();
+    const card = event.currentTarget;
+    if (!card || !sectionDragState || sectionDragState.scope !== scope || sectionDragState.sectionId === String(sectionId)) return;
+    clearSectionDragIndicators();
+    const rect = card.getBoundingClientRect();
+    const before = event.clientY < rect.top + (rect.height / 2);
+    card.classList.add(before ? 'section-drop-before' : 'section-drop-after');
+}
+
+function handleSectionDragLeave(event) {
+    const card = event.currentTarget;
+    const relatedTarget = event.relatedTarget;
+    if (card && relatedTarget && card.contains(relatedTarget)) return;
+    if (card) card.classList.remove('section-drop-before', 'section-drop-after');
+}
+
+function reorderSectionState(scope, draggedId, targetId, insertBefore) {
+    const sourceState = scope === 'video' ? videoSectionsState : teamResourceSectionsState;
+    const nextState = [...sourceState];
+    const fromIndex = nextState.findIndex((section) => String(section.id) === String(draggedId));
+    const targetIndex = nextState.findIndex((section) => String(section.id) === String(targetId));
+    if (fromIndex < 0 || targetIndex < 0) return null;
+    const [moved] = nextState.splice(fromIndex, 1);
+    let insertIndex = targetIndex;
+    if (!insertBefore && fromIndex < targetIndex) insertIndex = targetIndex;
+    else if (!insertBefore) insertIndex = targetIndex + 1;
+    else if (insertBefore && fromIndex < targetIndex) insertIndex = targetIndex - 1;
+    insertIndex = Math.max(0, Math.min(insertIndex, nextState.length));
+    nextState.splice(insertIndex, 0, moved);
+    if (scope === 'video') videoSectionsState = nextState;
+    else teamResourceSectionsState = nextState;
+    return nextState;
+}
+
+async function persistSectionOrder(scope, sections) {
+    const endpoint = scope === 'video' ? '/api/video_sections/reorder' : '/api/team_resources/reorder';
+    const order = (sections || []).map((section) => section.id);
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order }),
+    });
+    if (!response.ok) throw new Error(`Failed to reorder ${scope} sections`);
+}
+
+async function handleSectionDrop(event, scope, targetId) {
+    if (!isCaptainRole()) return;
+    event.preventDefault();
+    const card = event.currentTarget;
+    try {
+        const payload = JSON.parse(event.dataTransfer.getData('text/plain'));
+        if (!payload || payload.scope !== scope || String(payload.sectionId) === String(targetId)) return;
+        const rect = card.getBoundingClientRect();
+        const insertBefore = event.clientY < rect.top + (rect.height / 2);
+        const nextState = reorderSectionState(scope, payload.sectionId, targetId, insertBefore);
+        if (!nextState) return;
+        if (scope === 'video') renderVideoSections();
+        else renderTeamResourceSections();
+        await persistSectionOrder(scope, nextState);
+    } catch (error) {
+        console.error('Failed to reorder sections', error);
+        if (scope === 'video') await loadVideoSections();
+        else await loadTeamResources();
+    } finally {
+        handleSectionDragEnd();
     }
 }
 
@@ -678,6 +930,16 @@ async function deleteVideoSection(sectionId) {
 }
 
 function buildVideoNoteRow(note = {}) {
+    if (activeNotesScope === 'team_resource') {
+        return `
+            <div class="video-note-row video-note-row--simple">
+                <div class="video-note-row__top">
+                    <button type="button" class="video-note-row__remove" onclick="removeVideoNoteRow(this)">Remove</button>
+                </div>
+                <textarea class="video-note-content" placeholder="Notes">${escapeHtml(note.notes || '')}</textarea>
+            </div>
+        `;
+    }
     return `
         <div class="video-note-row">
             <div class="video-note-row__top">
@@ -694,6 +956,7 @@ function addVideoNoteRow(note = {}) {
     const list = document.getElementById('video-notes-list');
     if (!list) return;
     list.insertAdjacentHTML('beforeend', buildVideoNoteRow(note));
+    applyNotesModalMode();
 }
 
 function removeVideoNoteRow(button) {
@@ -701,37 +964,87 @@ function removeVideoNoteRow(button) {
     if (row) row.remove();
 }
 
-function openVideoNotesModal(sectionId) {
-    const section = videoSectionsState.find((item) => item.id === sectionId);
+function applyNotesModalMode() {
+    const isTeamResource = activeNotesScope === 'team_resource';
+    const readOnly = isTeamResource && !isCaptainRole();
+    const addButton = document.querySelector('#video-notes-modal .video-notes-modal__toolbar .court-btn');
+    const saveButton = document.querySelector('#video-notes-modal .video-notes-modal__actions .court-btn:last-child');
+    const removeButtons = document.querySelectorAll('#video-notes-list .video-note-row__remove');
+    const inputs = document.querySelectorAll('#video-notes-list .video-note-match, #video-notes-list .video-note-score, #video-notes-list .video-note-content');
+    if (addButton) addButton.style.display = isTeamResource || readOnly ? 'none' : 'inline-flex';
+    if (saveButton) saveButton.style.display = readOnly ? 'none' : 'inline-flex';
+    removeButtons.forEach((button) => {
+        button.style.display = isTeamResource || readOnly ? 'none' : 'inline-flex';
+    });
+    inputs.forEach((input) => {
+        input.disabled = readOnly;
+        if (input.tagName === 'TEXTAREA') {
+            input.readOnly = readOnly;
+        }
+    });
+}
+
+function openNotesModal(titleText, notes) {
     const modal = document.getElementById('video-notes-modal');
     const title = document.getElementById('video-notes-modal-title');
     const list = document.getElementById('video-notes-list');
-    if (!section || !modal || !title || !list) return;
+    if (!modal || !title || !list) return;
 
-    activeVideoNotesSectionId = sectionId;
-    title.textContent = section.title;
+    title.textContent = titleText;
     list.innerHTML = '';
-    const notes = Array.isArray(section.notes) && section.notes.length ? section.notes : [{}];
-    notes.forEach((note) => addVideoNoteRow(note));
+    const nextNotes = activeNotesScope === 'team_resource'
+        ? [Array.isArray(notes) && notes.length ? notes[0] : {}]
+        : (Array.isArray(notes) && notes.length ? notes : [{}]);
+    nextNotes.forEach((note) => addVideoNoteRow(note));
+    applyNotesModalMode();
     modal.style.display = 'flex';
+}
+
+function openVideoNotesModal(sectionId) {
+    const section = videoSectionsState.find((item) => item.id === sectionId);
+    if (!section) return;
+
+    activeNotesScope = 'video';
+    activeVideoNotesSectionId = sectionId;
+    activeTeamResourceNotesSectionId = null;
+    openNotesModal(section.title, section.notes);
+}
+
+function openTeamResourceNotesModal(sectionId) {
+    const section = teamResourceSectionsState.find((item) => item.id === sectionId);
+    if (!section) return;
+
+    activeNotesScope = 'team_resource';
+    activeTeamResourceNotesSectionId = sectionId;
+    activeVideoNotesSectionId = null;
+    openNotesModal(section.title, section.notes);
 }
 
 function closeVideoNotesModal() {
     const modal = document.getElementById('video-notes-modal');
     if (modal) modal.style.display = 'none';
     activeVideoNotesSectionId = null;
+    activeTeamResourceNotesSectionId = null;
+    activeNotesScope = 'video';
 }
 
 async function saveVideoNotes() {
-    if (!activeVideoNotesSectionId) return;
+    if (activeNotesScope === 'team_resource' && !isCaptainRole()) return;
+    const currentScope = activeNotesScope;
+    const targetId = currentScope === 'team_resource' ? activeTeamResourceNotesSectionId : activeVideoNotesSectionId;
+    if (!targetId) return;
     const rows = Array.from(document.querySelectorAll('#video-notes-list .video-note-row'));
     const notes = rows.map((row) => ({
-        match_name: row.querySelector('.video-note-match')?.value.trim() || '',
-        score: row.querySelector('.video-note-score')?.value.trim() || '',
+        match_name: currentScope === 'team_resource' ? '' : (row.querySelector('.video-note-match')?.value.trim() || ''),
+        score: currentScope === 'team_resource' ? '' : (row.querySelector('.video-note-score')?.value.trim() || ''),
         notes: row.querySelector('.video-note-content')?.value.trim() || '',
     })).filter((item) => item.match_name || item.score || item.notes);
 
-    const response = await fetch(`/api/video_sections/${activeVideoNotesSectionId}/notes`, {
+    const endpoint = currentScope === 'team_resource'
+        ? `/api/team_resources/sections/${targetId}/notes`
+        : `/api/video_sections/${targetId}/notes`;
+
+    const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ notes }),
@@ -742,10 +1055,12 @@ async function saveVideoNotes() {
     }
 
     closeVideoNotesModal();
-    await loadVideoSections();
+    if (currentScope === 'team_resource') await loadTeamResources();
+    else await loadVideoSections();
 }
 
 window.addEventListener('load', loadVideoSections);
+window.addEventListener('load', loadTeamResources);
 window.addEventListener('load', initCourtWeekdayFilters);
 window.addEventListener('load', loadCourtStatus);
 
@@ -1587,11 +1902,42 @@ function renderPracticeMenuDropZoneItems(halfKey) {
         return '<div class="menu-drop-zone__empty">把菜單拖曳到這裡，或手動新增。</div>';
     }
     return items.map((item, index) => `
-        <div class="menu-drop-zone__item" draggable="true" ondragstart="handlePracticeMenuExistingDragStart(event, '${halfKey}', ${index})">
+        <div class="menu-drop-zone__item" draggable="true" data-half-key="${halfKey}" data-index="${index}" ondragstart="handlePracticeMenuExistingDragStart(event, '${halfKey}', ${index})">
             <span>${escapeHtml(item.name || 'Untitled Drill')}</span>
             <button type="button" onclick="removePracticeMenuItem('${halfKey}', ${index})">&times;</button>
         </div>
     `).join('');
+}
+
+function getGoogleResourceKind(url) {
+    const normalized = String(url || '').toLowerCase();
+    if (normalized.includes('/spreadsheets/')) {
+        return { label: 'Google Sheet', icon: 'fas fa-table', accentClass: 'resource-preview--sheet' };
+    }
+    if (normalized.includes('/document/')) {
+        return { label: 'Google Doc', icon: 'fas fa-file-alt', accentClass: 'resource-preview--doc' };
+    }
+    return { label: 'Google File', icon: 'fas fa-link', accentClass: 'resource-preview--file' };
+}
+
+function renderTeamResourceCard(item, sectionId) {
+    const resourceKind = getGoogleResourceKind(item.url);
+    const title = item.title && item.title.trim() ? item.title.trim() : resourceKind.label;
+    return `
+        <div class="video-card">
+            ${isCaptainRole() ? `<button class="delete-btn" onclick="deleteTeamResourceItem('${item.id}', '${sectionId}')">刪除</button>` : ''}
+            <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; color: inherit;">
+                <div class="video-preview resource-preview ${resourceKind.accentClass}">
+                    <i class="${resourceKind.icon}"></i>
+                    <span>${resourceKind.label}</span>
+                </div>
+                <div class="video-info">
+                    <h5>${escapeHtml(title)}</h5>
+                    <p>${escapeHtml(item.url.length > 60 ? `${item.url.slice(0, 60)}...` : item.url)}</p>
+                </div>
+            </a>
+        </div>
+    `;
 }
 
 function renderPracticeMenuDropZones() {
@@ -1599,6 +1945,7 @@ function renderPracticeMenuDropZones() {
     const secondZone = document.getElementById('menu-second-half-zone');
     if (firstZone) firstZone.innerHTML = renderPracticeMenuDropZoneItems('first_half');
     if (secondZone) secondZone.innerHTML = renderPracticeMenuDropZoneItems('second_half');
+    clearPracticeMenuDropIndicators();
 }
 
 async function savePracticeMenu() {
@@ -1683,11 +2030,17 @@ function handlePracticeMenuExistingDragStart(event, halfKey, index) {
 
 function handlePracticeMenuDragOver(event) {
     event.preventDefault();
+    const zone = event.currentTarget;
+    if (!zone) return;
+    const insertIndex = getPracticeMenuInsertIndex(zone, event.clientY);
+    updatePracticeMenuDropIndicator(zone, insertIndex);
 }
 
 async function handlePracticeMenuDrop(event, halfKey) {
     event.preventDefault();
     try {
+        const zone = event.currentTarget;
+        const insertIndex = getPracticeMenuInsertIndex(zone, event.clientY);
         const payload = JSON.parse(event.dataTransfer.getData('text/plain'));
         if (payload.drag_kind === 'existing') {
             const fromHalf = payload.from_half;
@@ -1695,16 +2048,74 @@ async function handlePracticeMenuDrop(event, halfKey) {
             const sourceItems = [...(menuState.practiceMenu[fromHalf] || [])];
             const [movedItem] = sourceItems.splice(fromIndex, 1);
             if (!movedItem) return;
+            const targetItems = fromHalf === halfKey ? sourceItems : [...(menuState.practiceMenu[halfKey] || [])];
+            const adjustedIndex = fromHalf === halfKey && fromIndex < insertIndex ? insertIndex - 1 : insertIndex;
+            const normalizedIndex = Math.max(0, Math.min(adjustedIndex, targetItems.length));
+            targetItems.splice(normalizedIndex, 0, movedItem);
             menuState.practiceMenu[fromHalf] = sourceItems;
-            menuState.practiceMenu[halfKey] = [...(menuState.practiceMenu[halfKey] || []), movedItem];
+            menuState.practiceMenu[halfKey] = targetItems;
             await savePracticeMenu();
             await loadPracticeMenu();
             return;
         }
-        await addPracticeMenuItem(payload.source_type, payload.source_id, payload.name, halfKey);
+        const nextItems = [...(menuState.practiceMenu[halfKey] || [])];
+        const normalizedIndex = Math.max(0, Math.min(insertIndex, nextItems.length));
+        nextItems.splice(normalizedIndex, 0, {
+            source_type: payload.source_type,
+            source_id: payload.source_id || null,
+            name: payload.name || 'Untitled Drill'
+        });
+        menuState.practiceMenu[halfKey] = nextItems;
+        await savePracticeMenu();
+        await loadPracticeMenu();
     } catch (error) {
         console.error('Failed to drop practice menu item', error);
+    } finally {
+        clearPracticeMenuDropIndicators();
     }
+}
+
+function getPracticeMenuInsertIndex(zone, clientY) {
+    if (!zone) return 0;
+    const items = Array.from(zone.querySelectorAll('.menu-drop-zone__item'));
+    for (const item of items) {
+        const rect = item.getBoundingClientRect();
+        if (clientY < rect.top + (rect.height / 2)) {
+            return Number(item.dataset.index || 0);
+        }
+    }
+    return items.length;
+}
+
+function clearPracticeMenuDropIndicators() {
+    document.querySelectorAll('.menu-drop-zone__item.drop-before, .menu-drop-zone__item.drop-after').forEach((item) => {
+        item.classList.remove('drop-before', 'drop-after');
+    });
+    document.querySelectorAll('.menu-drop-zone.is-drop-target-empty').forEach((zone) => {
+        zone.classList.remove('is-drop-target-empty');
+    });
+}
+
+function updatePracticeMenuDropIndicator(zone, insertIndex) {
+    clearPracticeMenuDropIndicators();
+    if (!zone) return;
+    const items = Array.from(zone.querySelectorAll('.menu-drop-zone__item'));
+    if (!items.length) {
+        zone.classList.add('is-drop-target-empty');
+        return;
+    }
+    if (insertIndex >= items.length) {
+        items[items.length - 1].classList.add('drop-after');
+        return;
+    }
+    items[insertIndex].classList.add('drop-before');
+}
+
+function handlePracticeMenuDragLeave(event) {
+    const zone = event.currentTarget;
+    const relatedTarget = event.relatedTarget;
+    if (zone && relatedTarget && zone.contains(relatedTarget)) return;
+    clearPracticeMenuDropIndicators();
 }
 
 function initPracticeWeekdayListeners() {
@@ -1781,11 +2192,11 @@ function collectMenuEditorPayload() {
 }
 
 function ensureMenuEditorActionsPlacement() {
-    const importPanel = document.querySelector('#menu-editor-panel .menu-import-panel');
     const actionRow = document.querySelector('#menu-editor-panel .menu-editor-actions');
-    if (!importPanel || !actionRow) return;
-    if (actionRow.parentElement !== importPanel) {
-        importPanel.appendChild(actionRow);
+    const layout = document.querySelector('#menu-editor-panel .menu-editor-layout');
+    if (!actionRow || !layout) return;
+    if (actionRow.nextElementSibling !== layout) {
+        layout.parentElement.insertBefore(actionRow, layout);
     }
 }
 
@@ -3508,7 +3919,7 @@ function renderAnnouncements(rawText) {
     // 把文字依照換行符號切開
     const lines = rawText.split('\n').filter(line => line.trim() !== '');
     
-    let html = '<ul style="margin-bottom:0; padding-left: 20px;">';
+    let html = '<ul class="announcement-list">';
     lines.forEach(line => { 
         let formattedLine = line;
         // 如果有冒號，就把冒號前面的字加粗
