@@ -51,7 +51,7 @@ function refreshUIByRole(role) {
 function toggleSidebar() {
     const mainApp = document.getElementById('main-app');
     mainApp.classList.toggle('sidebar-toggled');
-    localStorage.setItem(SIDEBAR_TOGGLED_KEY, String(mainApp.classList.contains('sidebar-toggled')));
+    sessionStorage.setItem(SIDEBAR_TOGGLED_KEY, String(mainApp.classList.contains('sidebar-toggled')));
     hideSidebarToggleHint();
     updateShowcaseCropGuide();
 }
@@ -59,8 +59,11 @@ function toggleSidebar() {
 function applySavedSidebarState() {
     const mainApp = document.getElementById('main-app');
     if (!mainApp) return;
-    const savedValue = localStorage.getItem(SIDEBAR_TOGGLED_KEY);
-    if (savedValue === null) return;
+    const savedValue = sessionStorage.getItem(SIDEBAR_TOGGLED_KEY);
+    if (savedValue === null) {
+        mainApp.classList.add('sidebar-toggled'); // 無紀錄時預設收合
+        return;
+    }
     mainApp.classList.toggle('sidebar-toggled', savedValue === 'true');
 }
 
@@ -73,7 +76,7 @@ function canAccessSection(sectionId, role) {
 }
 
 function getInitialSection(role) {
-    const savedSection = localStorage.getItem(LAST_SECTION_KEY) || 'home';
+    const savedSection = sessionStorage.getItem(LAST_SECTION_KEY) || 'home';
     return canAccessSection(savedSection, role) ? savedSection : 'home';
 }
 
@@ -113,7 +116,7 @@ function showSection(sectionId) {
     const targetSection = document.getElementById(sectionId);
     if (targetSection) {
         targetSection.style.display = 'block';
-        localStorage.setItem(LAST_SECTION_KEY, sectionId);
+        sessionStorage.setItem(LAST_SECTION_KEY, sectionId);
     } else {
         console.error('Element with ID "' + sectionId + '" not found.');
         return; 
@@ -1177,7 +1180,7 @@ async function loadGallery() {
 
     const currentRole = localStorage.getItem('vbt_role');
     const canDelete = currentRole === 'member' || currentRole === 'captain';
-    const canSelect = currentRole === 'captain'; // 假設只有隊長可以決定輪播照片
+    const canSelect = currentRole === 'member' || currentRole === 'captain'; // 隊長跟隊員都可以決定輪播照片
 
     try {
         // 同時抓取所有照片，以及「被選中」的照片名單
@@ -2671,6 +2674,11 @@ async function loadCourtStatus() {
 
     await fetchAndDisplayCourt(current.id, 'display-current');
     await fetchAndDisplayCourt(next.id, 'display-next');
+    
+    // 恢復該 Session 記住的子分頁
+    const savedTab = sessionStorage.getItem('vbt_court_tab') || 'current';
+    switchCourtTab(savedTab);
+    
     updateCourtEditButton();
 }
 
@@ -2881,6 +2889,8 @@ function toggleNames() {
 
 function switchCourtTab(tabType) {
     activeCourtTab = tabType;
+    sessionStorage.setItem('vbt_court_tab', tabType);
+    
     document.getElementById('tab-current').classList.remove('active');
     document.getElementById('tab-next').classList.remove('active');
     document.getElementById(`tab-${tabType}`).classList.add('active');
@@ -3490,11 +3500,18 @@ async function loadLotteryBids() {
     await fetchAndDisplayLotteryBids(next.id, 'lottery-display-next');
     await fetchAndDisplayLotteryBids(lotterySelectedMonthId, 'lottery-display-selected');
     await loadLotteryMonthHistory();
+    
+    // 恢復該 Session 記住的子分頁
+    const savedTab = sessionStorage.getItem('vbt_lottery_tab') || 'current';
+    switchLotteryTab(savedTab);
+    
     updateLotteryEditButton();
 }
 
 function switchLotteryTab(tabType) {
     activeLotteryTab = tabType;
+    sessionStorage.setItem('vbt_lottery_tab', tabType);
+    
     document.getElementById('lottery-tab-current').classList.toggle('active', tabType === 'current');
     document.getElementById('lottery-tab-next').classList.toggle('active', tabType === 'next');
     document.getElementById('lottery-tab-selected').classList.toggle('active', tabType === 'selected');
@@ -3581,6 +3598,8 @@ function initProbabilityControls() {
 
 function switchProbabilityTab(tabType) {
     activeProbabilityTab = tabType;
+    sessionStorage.setItem('vbt_probability_tab', tabType);
+    
     document.getElementById('probability-tab-selected').classList.toggle('active', tabType === 'selected');
     document.getElementById('probability-tab-all').classList.toggle('active', tabType === 'all');
     document.getElementById('probability-selected-panel').style.display = tabType === 'selected' ? 'block' : 'none';
@@ -3589,6 +3608,8 @@ function switchProbabilityTab(tabType) {
 
 function switchStrategyTab(tabType) {
     activeStrategyTab = tabType;
+    sessionStorage.setItem('vbt_strategy_tab', tabType);
+    
     document.getElementById('strategy-tab-selected').classList.toggle('active', tabType === 'selected');
     document.getElementById('strategy-tab-all').classList.toggle('active', tabType === 'all');
     document.getElementById('strategy-selected-panel').style.display = tabType === 'selected' ? 'block' : 'none';
@@ -3820,8 +3841,8 @@ async function loadLotteryDashboard() {
         if (strategySelectedPanel) strategySelectedPanel.innerHTML = renderStrategyTable(data.strategy.selected.rows, selectedStrategySummary, strategyCourts);
         if (strategyAllPanel) strategyAllPanel.innerHTML = renderStrategyTable(data.strategy.all_time.rows, allHistoryStrategySummary, strategyCourts);
 
-        switchProbabilityTab(activeProbabilityTab);
-        switchStrategyTab(activeStrategyTab);
+        switchProbabilityTab(sessionStorage.getItem('vbt_probability_tab') || activeProbabilityTab);
+        switchStrategyTab(sessionStorage.getItem('vbt_strategy_tab') || activeStrategyTab);
     } catch (error) {
         console.error('載入投籤儀表板失敗', error);
     }
@@ -4112,4 +4133,111 @@ function goToSlide(index) {
 
     // 重新計時 (避免使用者手動點擊後，馬上又跳下一張)
     startSliderTimer();
+}
+
+// ==========================================
+// 11. Footer Features
+// ==========================================
+window.addEventListener('load', loadFooter);
+
+let currentFooterData = {
+    captainText: '隊長',
+    captainLink: '#',
+    viceText: '副隊長',
+    viceLink: '#',
+    igText: '球隊 IG',
+    igLink: '#'
+};
+
+async function loadFooter() {
+    try {
+        const response = await fetch('/api/footer');
+        if (response.ok) {
+            const data = await response.json();
+            if (data && Object.keys(data).length > 0) {
+                currentFooterData = data;
+            }
+        }
+    } catch (error) {
+        // 若後端尚未建立 API，嘗試從 LocalStorage 讀取作為備案
+        const localData = localStorage.getItem('vbt_footer_data');
+        if (localData) {
+            currentFooterData = JSON.parse(localData);
+        }
+    } finally {
+        renderFooter();
+    }
+}
+
+function renderFooter() {
+    const container = document.getElementById('footer-contacts');
+    if (!container) return;
+
+    const makeLink = (text, link) => {
+        if (!text) return '';
+        const href = link && link.trim() !== '' ? escapeHtml(link) : '#';
+        return `<a href="${href}" target="_blank" style="color: var(--accent-color); text-decoration: none; font-weight: 500;">${escapeHtml(text)}</a>`;
+    };
+
+    const parts = [];
+    if (currentFooterData.captainText) parts.push(`隊長：${makeLink(currentFooterData.captainText, currentFooterData.captainLink)}`);
+    if (currentFooterData.viceText) parts.push(`副隊長：${makeLink(currentFooterData.viceText, currentFooterData.viceLink)}`);
+    if (currentFooterData.igText) parts.push(`IG：${makeLink(currentFooterData.igText, currentFooterData.igLink)}`);
+
+    container.innerHTML = parts.join(' <span style="color:#ccc; margin: 0 8px;">|</span> ');
+}
+
+function openEditFooter() {
+    document.getElementById('edit-footer-overlay').style.setProperty('display', 'flex', 'important');
+    document.getElementById('footer-captain-text').value = currentFooterData.captainText || '';
+    document.getElementById('footer-captain-link').value = currentFooterData.captainLink || '';
+    document.getElementById('footer-vice-text').value = currentFooterData.viceText || '';
+    document.getElementById('footer-vice-link').value = currentFooterData.viceLink || '';
+    document.getElementById('footer-ig-text').value = currentFooterData.igText || '';
+    document.getElementById('footer-ig-link').value = currentFooterData.igLink || '';
+}
+
+function closeEditFooter() {
+    document.getElementById('edit-footer-overlay').style.setProperty('display', 'none', 'important');
+}
+
+async function submitFooter(e) {
+    const payload = {
+        captainText: document.getElementById('footer-captain-text').value.trim(),
+        captainLink: document.getElementById('footer-captain-link').value.trim(),
+        viceText: document.getElementById('footer-vice-text').value.trim(),
+        viceLink: document.getElementById('footer-vice-link').value.trim(),
+        igText: document.getElementById('footer-ig-text').value.trim(),
+        igLink: document.getElementById('footer-ig-link').value.trim()
+    };
+
+    const btn = e ? e.target : document.activeElement;
+    const originalText = btn.innerText;
+    btn.innerText = '儲存中...';
+    btn.disabled = true;
+
+    try {
+        const response = await fetch('/api/footer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+            closeEditFooter();
+            loadFooter(); 
+        } else {
+            throw new Error('伺服器錯誤');
+        }
+    } catch (error) {
+        // 若後端 API 尚未建立，在此提供本地備案，讓畫面能動作
+        console.log('API 未回應，改為更新本地快取 (Local Storage)');
+        localStorage.setItem('vbt_footer_data', JSON.stringify(payload));
+        currentFooterData = payload;
+        renderFooter();
+        closeEditFooter();
+    } finally {
+        btn.innerText = originalText;
+        btn.disabled = false;
+    }
 }

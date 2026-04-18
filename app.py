@@ -1024,6 +1024,26 @@ def handle_announcements():
         new_content = data.get('content', '')
         set_system_data_json("announcements", new_content)
         return jsonify({"message": "Saved successfully"}), 200
+
+@app.route('/api/footer', methods=['GET', 'POST'])
+def handle_footer():
+    default_footer_data = {
+        'captainText': '隊長',
+        'captainLink': '#',
+        'viceText': '副隊長',
+        'viceLink': '#',
+        'igText': '球隊 IG',
+        'igLink': '#'
+    }
+    
+    if request.method == 'GET':
+        footer_data = get_system_data_json("footer_data", default_footer_data)
+        return jsonify(footer_data)
+
+    if request.method == 'POST':
+        new_data = request.get_json() or {}
+        set_system_data_json("footer_data", new_data)
+        return jsonify({"status": "success"}), 200
     
 @app.route("/get_videos", methods=["GET"])
 def get_videos():
@@ -1853,5 +1873,3 @@ def save_showcase_photo_crop():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")))
-
-

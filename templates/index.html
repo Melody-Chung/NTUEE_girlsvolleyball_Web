@@ -632,8 +632,25 @@
                         </div>
                     </div>
                 </div>
-
             </div>
+            
+            <footer class="app-footer" style="padding: 25px 20px; margin-top: auto; border-top: 1px solid #eaeaea; background-color: #fafafa; color: #555; font-size: 0.95rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; max-width: 1200px; margin: 0 auto; gap: 20px;">
+                    
+                    <div style="display: flex; gap: 15px; align-items: center;">
+                        <div id="footer-contacts" style="display: flex; gap: 15px; align-items: center;">
+                            </div>
+                        <button class="primary-btn-sm captain-only auth-only" onclick="openEditFooter()" style="padding: 4px 10px; font-size: 0.8rem; background: #7f8c8d; border: none; color: white; border-radius: 4px; cursor: pointer;">
+                            編輯聯絡資訊
+                        </button>
+                    </div>
+                    
+                    <div class="footer-copyright" style="font-size: 0.85rem; color: #888;">
+                        Copyright &copy; 2026 電機女排. All rights reserved. Designed by B13 鍾承芳.
+                    </div>
+                    
+                </div>
+            </footer>
         </main>
     </div>
     
@@ -720,6 +737,39 @@
             <textarea id="announcement-textarea" rows="8" style="width: 100%; padding: 12px; border: 1.5px solid #eee; border-radius: 8px; margin-bottom: 20px; font-family: inherit; resize: vertical;" placeholder="在這裡輸入公告內容..."></textarea>
             <button class="primary-btn full-width" onclick="submitAnnouncements()">儲存變更</button>
             <button onclick="closeEditAnnouncement()" class="close-btn">取消</button>
+        </div>
+    </div>
+
+    <div id="edit-footer-overlay" class="login-screen" style="display: none;">
+        <div class="login-card" style="max-width: 500px;">
+            <h3>編輯聯絡資訊</h3>
+            
+            <div style="margin-bottom: 15px; text-align: left;">
+                <label style="display: block; font-size: 0.9em; color: #666; margin-bottom: 5px;">隊長聯絡資訊</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="footer-captain-text" placeholder="顯示名稱 (例: 王小明)" style="flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 6px;">
+                    <input type="text" id="footer-captain-link" placeholder="連結 (例: fb.com/...)" style="flex: 2; padding: 10px; border: 1px solid #ccc; border-radius: 6px;">
+                </div>
+            </div>
+            
+            <div style="margin-bottom: 15px; text-align: left;">
+                <label style="display: block; font-size: 0.9em; color: #666; margin-bottom: 5px;">副隊長聯絡資訊</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="footer-vice-text" placeholder="顯示名稱" style="flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 6px;">
+                    <input type="text" id="footer-vice-link" placeholder="連結" style="flex: 2; padding: 10px; border: 1px solid #ccc; border-radius: 6px;">
+                </div>
+            </div>
+            
+            <div style="margin-bottom: 20px; text-align: left;">
+                <label style="display: block; font-size: 0.9em; color: #666; margin-bottom: 5px;">球隊 IG</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="footer-ig-text" placeholder="顯示名稱 (例: @ntuee_vb)" style="flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 6px;">
+                    <input type="text" id="footer-ig-link" placeholder="連結" style="flex: 2; padding: 10px; border: 1px solid #ccc; border-radius: 6px;">
+                </div>
+            </div>
+            
+            <button class="primary-btn full-width" onclick="submitFooter(event)">儲存變更</button>
+            <button onclick="closeEditFooter()" class="close-btn">取消</button>
         </div>
     </div>
     
