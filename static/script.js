@@ -583,7 +583,7 @@ function renderVideoThumbnailCard(video, sectionId) {
     const title = video.title && video.title.trim() ? video.title.trim() : '比賽影片';
     const preview = videoId
         ? `<div class="video-preview" style="background-image: url('${thumbnailUrl}'); height: 160px; background-size: cover;"></div>`
-        : `<div class="video-preview" style="height: 160px;"><span class="play-label">Open Link</span></div>`;
+        : `<div class="video-preview" style="height: 160px;"><span class="play-label">開啟連結</span></div>`;
     return `
         <div class="video-card">
             <button class="delete-btn" onclick="deleteVideoItem(${video.id}, ${sectionId})">刪除</button>
@@ -616,7 +616,7 @@ function renderVideoSections() {
                     <h4>${escapeHtml(section.title)}</h4>
                     <button type="button" class="video-section-card__meta" onclick="openVideoNotesModal(${section.id})">
                         <i class="fas fa-file-alt"></i>
-                        <span>Notes</span>
+                        <span>筆記</span>
                         <small>${Array.isArray(section.notes) ? section.notes.length : 0}</small>
                     </button>
                 </div>
@@ -628,7 +628,7 @@ function renderVideoSections() {
             <div class="video-section-card__body">
                 ${section.videos && section.videos.length
                     ? `<div class="video-section-card__scroller">${section.videos.map((video) => renderVideoThumbnailCard(video, section.id)).join('')}</div>`
-                    : '<div class="video-section-card__empty">No videos in this section yet.</div>'}
+                    : '<div class="video-section-card__empty">這個分類目前沒有影片。</div>'}
             </div>
         </div>
     `).join('');
@@ -676,7 +676,7 @@ function renderTeamResourceSections() {
                     <h4>${escapeHtml(section.title)}</h4>
                     <button type="button" class="video-section-card__meta" onclick="openTeamResourceNotesModal('${section.id}')">
                         <i class="fas fa-file-alt"></i>
-                        <span>Notes</span>
+                        <span>筆記</span>
                         <small>${Array.isArray(section.notes) ? section.notes.length : 0}</small>
                     </button>
                     ${isCaptainRole() ? `<span class="resource-visibility-chip">${section.visibility === 'all' ? '隊長隊員可見' : '只有隊長可見'}</span>` : ''}
@@ -689,7 +689,7 @@ function renderTeamResourceSections() {
             <div class="video-section-card__body">
                 ${section.resources && section.resources.length
                     ? `<div class="video-section-card__scroller">${section.resources.map((item) => renderTeamResourceCard(item, section.id)).join('')}</div>`
-                    : '<div class="video-section-card__empty">No files in this section yet.</div>'}
+                    : '<div class="video-section-card__empty">這個分類目前沒有檔案。</div>'}
             </div>
         </div>
     `).join('');
@@ -713,7 +713,7 @@ async function createTeamResourceSection() {
     const title = input ? input.value.trim() : '';
     const visibility = visibilityInput ? visibilityInput.value : 'captain';
     if (!title) {
-        alert('請先輸入資料分類名稱。');
+        alert('請輸入分類名稱。');
         return;
     }
 
@@ -723,7 +723,7 @@ async function createTeamResourceSection() {
         body: JSON.stringify({ title, visibility }),
     });
     if (!response.ok) {
-        alert('建立資料分類失敗。');
+        alert('建立分類失敗。');
         return;
     }
 
@@ -904,7 +904,7 @@ async function createVideoSection() {
     const input = document.getElementById('video-section-title');
     const title = input ? input.value.trim() : '';
     if (!title) {
-        alert('Please enter a section title.');
+        alert('請輸入分類名稱。');
         return;
     }
 
@@ -914,7 +914,7 @@ async function createVideoSection() {
         body: JSON.stringify({ title }),
     });
     if (!response.ok) {
-        alert('Failed to create section.');
+        alert('建立分類失敗。');
         return;
     }
 
@@ -930,8 +930,8 @@ async function addVideo() {
     const title = titleInput ? titleInput.value.trim() : '';
     const sectionId = sectionSelect ? sectionSelect.value : '';
 
-    if (!sectionId) return alert('Please choose a section first.');
-    if (!url) return alert('Please enter a YouTube URL.');
+    if (!sectionId) return alert('請先選擇一個分類。');
+    if (!url) return alert('請輸入 YouTube 網址。');
 
     const response = await fetch('/add_video', {
         method: 'POST',
@@ -940,7 +940,7 @@ async function addVideo() {
     });
 
     if (!response.ok) {
-        alert('Failed to save video to database.');
+        alert('影片儲存失敗。');
         return;
     }
 
@@ -958,7 +958,7 @@ async function deleteVideoItem(videoId, sectionId) {
             body: JSON.stringify({ id: videoId }),
         });
         if (!response.ok) {
-            alert('Failed to delete video from database.');
+            alert('從資料庫刪除影片失敗。');
             return;
         }
         await loadVideoSections();
@@ -974,7 +974,7 @@ async function deleteVideoSection(sectionId) {
     if (!confirm('確定要刪除整個比賽分類嗎？包含底下的影片與筆記。')) return;
     const response = await fetch(`/api/video_sections/${sectionId}`, { method: 'DELETE' });
     if (!response.ok) {
-        alert('Failed to delete section.');
+        alert('刪除分類失敗。');
         return;
     }
     if (activeVideoNotesSectionId === sectionId) closeVideoNotesModal();
@@ -986,9 +986,9 @@ function buildVideoNoteRow(note = {}) {
         return `
             <div class="video-note-row video-note-row--simple">
                 <div class="video-note-row__top">
-                    <button type="button" class="video-note-row__remove" onclick="removeVideoNoteRow(this)">Remove</button>
+                    <button type="button" class="video-note-row__remove" onclick="removeVideoNoteRow(this)">移除</button>
                 </div>
-                <textarea class="video-note-content" placeholder="Notes">${escapeHtml(note.notes || '')}</textarea>
+                <textarea class="video-note-content" placeholder="筆記">${escapeHtml(note.notes || '')}</textarea>
             </div>
         `;
     }
@@ -996,10 +996,10 @@ function buildVideoNoteRow(note = {}) {
         <div class="video-note-row">
             <div class="video-note-row__top">
                 <input type="text" class="video-note-match" placeholder="比賽名稱" value="${escapeHtml(note.match_name || '')}">
-                <input type="text" class="video-note-score" placeholder="Score" value="${escapeHtml(note.score || '')}">
-                <button type="button" class="video-note-row__remove" onclick="removeVideoNoteRow(this)">Remove</button>
+                <input type="text" class="video-note-score" placeholder="比分" value="${escapeHtml(note.score || '')}">
+                <button type="button" class="video-note-row__remove" onclick="removeVideoNoteRow(this)">移除</button>
             </div>
-            <textarea class="video-note-content" placeholder="Notes">${escapeHtml(note.notes || '')}</textarea>
+            <textarea class="video-note-content" placeholder="筆記">${escapeHtml(note.notes || '')}</textarea>
         </div>
     `;
 }
@@ -1102,7 +1102,7 @@ async function saveVideoNotes() {
         body: JSON.stringify({ notes }),
     });
     if (!response.ok) {
-        alert('Failed to save notes.');
+        alert('儲存筆記失敗。');
         return;
     }
 
@@ -1124,7 +1124,7 @@ async function uploadPhotos() {
     const uploadBtn = fileInput.nextElementSibling;
 
     if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-        alert('Please select photos to upload first.');
+        alert('請先選擇要上傳的照片。');
         return;
     }
 
@@ -1153,14 +1153,14 @@ async function uploadPhotos() {
         
         if (response.ok) {
             fileInput.value = ''; 
-            document.getElementById('file-chosen-text').innerText = 'No files chosen';
+            document.getElementById('file-chosen-text').innerText = '尚未選擇檔案';
             document.getElementById('file-chosen-text').style.color = '#666';
             loadGallery();
-        } else {                alert(data.message || 'System denied access. Please log in to the NTU venue system, then try scraping again.');
+        } else {                alert(data.message || '系統拒絕存取。請登入台大場地系統後，再試著重新爬取。');
         }
     } catch (error) {
         console.error('Upload error:', error);
-        alert('Server error during upload.');
+        alert('上傳時發生伺服器錯誤。');
     } finally {
         uploadBtn.innerText = originalText;
         uploadBtn.disabled = false;
@@ -1186,7 +1186,7 @@ async function loadGallery() {
         
         gallery.innerHTML = ''; 
         if (photos.length === 0) {
-            gallery.innerHTML = '<p style="color:#999; grid-column: 1 / -1;">No photos yet. Be the first to upload!</p>';
+            gallery.innerHTML = '<p style="color:#999; grid-column: 1 / -1;">目前還沒有照片。來上傳第一張照片吧！</p>';
             return;
         }
 
@@ -1207,7 +1207,7 @@ async function loadGallery() {
             }
             // 新增：加入輪播圖的按鈕
             if (canSelect) {
-                const btnText = isSelected ? '★ Shown' : '☆ Select';
+                const btnText = isSelected ? '★ 輪播中' : '☆ 選擇';
                 actionBtnsHtml += `<button class="photo-toggle-btn" onclick="toggleShowcasePhoto('${filename}', this)">${btnText}</button>`;
             }
             card.innerHTML = `
@@ -1384,7 +1384,7 @@ async function openShowcaseCropModal(filename, btnElement) {
         });
     };
     loader.onerror = () => {
-        alert('Failed to load the image for cropping.');
+        alert('載入裁切圖片失敗。');
         closeShowcaseCropModal();
     };
     loader.src = showcaseCropState.imageSrc;
@@ -1428,7 +1428,7 @@ async function saveShowcaseCrop() {
             ctx.drawImage(img, imageLeft * ratioX, imageTop * ratioY, displayWidth * ratioX, displayHeight * ratioY);
             const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
             if (!blob) {
-                alert('Failed to create the cropped image.');
+                alert('建立裁切圖片失敗。');
                 return;
             }
 
@@ -1437,7 +1437,7 @@ async function saveShowcaseCrop() {
             formData.append('crop', blob, `${showcaseCropState.filename.replace(/\.[^.]+$/, '')}_showcase.jpg`);
             const response = await fetch('/api/showcase_photo_crop', { method: 'POST', body: formData });
             if (!response.ok) {
-                alert('Failed to save showcase crop.');
+                alert('儲存輪播裁切圖片失敗。');
                 return;
             }
 
@@ -1457,11 +1457,11 @@ async function saveShowcaseCrop() {
             loadShowcaseSlider();
         } catch (error) {
             console.error('Failed to save showcase crop:', error);
-            alert('Failed to save showcase crop.');
+            alert('儲存輪播裁切圖片失敗。');
         }
     };
     img.onerror = () => {
-        alert('Failed to load the cropped image data.');
+        alert('載入裁切圖片資料失敗。');
     };
     img.src = showcaseCropState.imageSrc;
 }
@@ -1477,7 +1477,7 @@ async function toggleShowcasePhoto(filename, btnElement) {
     if (isCurrentlySelected) {
         selectedPhotos = selectedPhotos.filter(p => p !== filename);
         card.classList.remove('selected');
-        btnElement.innerText = '☆ Select';
+        btnElement.innerText = '☆ 選擇';
 
         await fetch('/api/showcase_photos', {
             method: 'POST',
@@ -1496,7 +1496,7 @@ async function toggleShowcasePhoto(filename, btnElement) {
  * Handle deleting a photo from the gallery
  */
 async function deletePhoto(filename, btnElement) {
-    if (!confirm('Are you sure you want to delete this photo?')) return;
+    if (!confirm('確定要刪除這張照片嗎？')) return;
     
     // Remove from UI immediately for better user experience
     const card = btnElement.parentElement;
@@ -1510,7 +1510,7 @@ async function deletePhoto(filename, btnElement) {
         });
 
         if (!response.ok) {
-            alert('Failed to delete photo from server.');
+            alert('從伺服器刪除照片失敗。');
             loadGallery(); // Reload from DB to sync UI if deletion failed
         }
     } catch (error) {
@@ -1521,11 +1521,11 @@ async function deletePhoto(filename, btnElement) {
 function updateFileCount(input) {
     const textSpan = document.getElementById('file-chosen-text');
     if (input.files && input.files.length > 0) {
-        textSpan.innerText = `${input.files.length} files selected`;
+        textSpan.innerText = `已選擇 ${input.files.length} 個檔案`;
         textSpan.style.color = 'var(--accent-color)';
         textSpan.style.fontWeight = 'bold';
     } else {
-        textSpan.innerText = 'No files chosen';
+        textSpan.innerText = '尚未選擇檔案';
         textSpan.style.color = '#666';
         textSpan.style.fontWeight = 'normal';
     }
@@ -1735,7 +1735,7 @@ function renderMenuCard(row, index = null) {
         <article class="menu-result-card">
             <div class="menu-result-card__header">
                 <div>
-                    <div class="menu-result-card__eyebrow">${index === null ? 'Matching Drill' : `Drill ${index + 1}`}</div>
+                    <div class="menu-result-card__eyebrow">${index === null ? '符合的訓練' : `訓練 ${index + 1}`}</div>
                     <h4>${escapeHtml(row.name)}</h4>
                 </div>
                 <div class="menu-result-card__badges">${badges}</div>
@@ -1754,7 +1754,7 @@ function createPracticeMenuSourceItem(row, sourceLabel, sourceType) {
         <article class="menu-source-item" draggable="true" ondragstart="handlePracticeMenuDragStart(event, '${escapeHtml(sourceType)}', ${Number(row.id || 0)}, decodeURIComponent('${encodedName}'))">
             <div class="menu-source-item__main">
                 <div class="menu-source-item__title">${escapeHtml(row.name)}</div>
-                <div class="menu-source-item__meta">${escapeHtml((row.court_modes || []).join(' / ') || '-')} &middot; ${escapeHtml(String(row.people_count || '-'))} people &middot; ${escapeHtml((row.difficulty_levels || []).join(' / ') || '-')}</div>
+                <div class="menu-source-item__meta">${escapeHtml((row.court_modes || []).join(' / ') || '-')} &middot; ${escapeHtml(String(row.people_count || '-'))} 人 &middot; ${escapeHtml((row.difficulty_levels || []).join(' / ') || '-')}</div>
             </div>
             <div class="menu-source-item__actions">
                 <span class="menu-source-item__badge">${escapeHtml(sourceLabel)}</span>
@@ -1791,7 +1791,7 @@ function renderPlanSources() {
                 </div>
             </div>
             <div class="menu-source-grid">
-                ${generated.map((row) => createPracticeMenuSourceItem(row, 'Generated', 'generated')).join('')}
+                ${generated.map((row) => createPracticeMenuSourceItem(row, '建議', 'generated')).join('')}
             </div>
         ` : ''}
         ${matching.length ? `
@@ -1802,7 +1802,7 @@ function renderPlanSources() {
                 </div>
             </div>
             <div class="menu-source-grid">
-                ${matching.map((row) => createPracticeMenuSourceItem(row, 'Match', 'match')).join('')}
+                ${matching.map((row) => createPracticeMenuSourceItem(row, '符合', 'match')).join('')}
             </div>
         ` : ''}
     `;
@@ -1812,7 +1812,7 @@ function createPracticeMenuBoardItem(item, halfKey, index) {
     const isCaptain = localStorage.getItem('vbt_role') === 'captain';
     return `
         <div class="practice-menu-item">
-            <span>${escapeHtml(item.name || 'Untitled Drill')}</span>
+            <span>${escapeHtml(item.name || '未命名訓練')}</span>
             ${isCaptain ? `<button type="button" class="practice-menu-item__remove" onclick="removePracticeMenuItem('${halfKey}', ${index})">&times;</button>` : ''}
         </div>
     `;
@@ -1892,12 +1892,12 @@ function renderPracticeMenuBoard() {
             <div class="practice-menu-board__halves">
                 <section class="practice-menu-board__half">
                     <div class="practice-menu-board__list">
-                        ${firstHalf.length ? firstHalf.map((item, index) => createPracticeMenuBoardItem(item, 'first_half', index)).join('') : '<div class="menu-empty-state" style="margin-top:0;">No drills yet.</div>'}
+                        ${firstHalf.length ? firstHalf.map((item, index) => createPracticeMenuBoardItem(item, 'first_half', index)).join('') : '<div class="menu-empty-state" style="margin-top:0;">目前沒有訓練。</div>'}
                     </div>
                 </section>
                 <section class="practice-menu-board__half">
                     <div class="practice-menu-board__list">
-                        ${secondHalf.length ? secondHalf.map((item, index) => createPracticeMenuBoardItem(item, 'second_half', index)).join('') : '<div class="menu-empty-state" style="margin-top:0;">No drills yet.</div>'}
+                        ${secondHalf.length ? secondHalf.map((item, index) => createPracticeMenuBoardItem(item, 'second_half', index)).join('') : '<div class="menu-empty-state" style="margin-top:0;">目前沒有訓練。</div>'}
                     </div>
                 </section>
             </div>
@@ -1953,7 +1953,7 @@ function renderPracticeMenuDropZoneItems(halfKey) {
     }
     return items.map((item, index) => `
         <div class="menu-drop-zone__item" draggable="true" data-half-key="${halfKey}" data-index="${index}" ondragstart="handlePracticeMenuExistingDragStart(event, '${halfKey}', ${index})">
-            <span>${escapeHtml(item.name || 'Untitled Drill')}</span>
+            <span>${escapeHtml(item.name || '未命名訓練')}</span>
             <button type="button" onclick="removePracticeMenuItem('${halfKey}', ${index})">&times;</button>
         </div>
     `).join('');
@@ -1962,12 +1962,12 @@ function renderPracticeMenuDropZoneItems(halfKey) {
 function getGoogleResourceKind(url) {
     const normalized = String(url || '').toLowerCase();
     if (normalized.includes('/spreadsheets/')) {
-        return { label: 'Google Sheet', icon: 'fas fa-table', accentClass: 'resource-preview--sheet' };
+        return { label: 'Google 試算表', icon: 'fas fa-table', accentClass: 'resource-preview--sheet' };
     }
     if (normalized.includes('/document/')) {
-        return { label: 'Google Doc', icon: 'fas fa-file-alt', accentClass: 'resource-preview--doc' };
+        return { label: 'Google 文件', icon: 'fas fa-file-alt', accentClass: 'resource-preview--doc' };
     }
-    return { label: 'Google File', icon: 'fas fa-link', accentClass: 'resource-preview--file' };
+    return { label: 'Google 檔案', icon: 'fas fa-link', accentClass: 'resource-preview--file' };
 }
 
 function renderTeamResourceCard(item, sectionId) {
@@ -2027,7 +2027,7 @@ async function addPracticeMenuItem(sourceType, sourceId, sourceName, halfKey) {
     const item = {
         source_type: sourceType,
         source_id: sourceId || null,
-        name: sourceName || 'Untitled Drill'
+        name: sourceName || '未命名訓練'
     };
     menuState.practiceMenu[halfKey] = [...(menuState.practiceMenu[halfKey] || []), item];
     await savePracticeMenu();
@@ -2063,7 +2063,7 @@ function handlePracticeMenuDragStart(event, sourceType, sourceId, sourceName) {
         drag_kind: 'source',
         source_type: sourceType,
         source_id: sourceId || null,
-        name: sourceName || 'Untitled Drill'
+        name: sourceName || '未命名訓練'
     }));
 }
 
@@ -2113,7 +2113,7 @@ async function handlePracticeMenuDrop(event, halfKey) {
         nextItems.splice(normalizedIndex, 0, {
             source_type: payload.source_type,
             source_id: payload.source_id || null,
-            name: payload.name || 'Untitled Drill'
+            name: payload.name || '未命名訓練'
         });
         menuState.practiceMenu[halfKey] = nextItems;
         await savePracticeMenu();
@@ -2211,13 +2211,13 @@ function renderMenuEditorList() {
     const list = document.getElementById('menu-editor-list');
     if (!list) return;
     if (!menuState.rows.length) {
-        list.innerHTML = '<div class="menu-empty-state" style="margin-top:0;">No drills yet.</div>';
+        list.innerHTML = '<div class="menu-empty-state" style="margin-top:0;">目前沒有訓練。</div>';
         return;
     }
     list.innerHTML = sortMenuRows(menuState.rows).map((row) => `
         <button type="button" class="menu-editor-item ${menuState.editingId === row.id ? 'active' : ''}" onclick="fillMenuEditorById(${row.id})">
             <strong>${escapeHtml(row.name)}</strong>
-            <span>${escapeHtml((row.court_modes || []).join(' / ') || '-')} &middot; ${escapeHtml(String(row.people_count || '-'))} people &middot; ${escapeHtml((row.difficulty_levels || []).join(' / ') || '-')}</span>
+            <span>${escapeHtml((row.court_modes || []).join(' / ') || '-')} &middot; ${escapeHtml(String(row.people_count || '-'))} 人 &middot; ${escapeHtml((row.difficulty_levels || []).join(' / ') || '-')}</span>
         </button>
     `).join('');
 }
@@ -2393,11 +2393,11 @@ async function initTrainingMenu() {
 
 function runTask(taskName) {
     console.log(`Task triggered: ${taskName}`);
-    alert(`System Notice: Executing "${taskName}".\n(Currently UI only.)`);
+    alert(`系統通知：正在執行 "${taskName}"。\n(目前僅具備介面。)`);
 }
 
 function addAdvancedRecord() {
-    alert('Record saved successfully.');
+    alert('紀錄儲存成功。');
 }
 // ==========================================
 // 6. Court Status & Scraper Management (融合升級版)
@@ -2674,7 +2674,7 @@ async function deleteMonthRecords(monthId) {
         const response = await fetch(`/api/court_status/${monthId}`, { method: 'DELETE' });
         const data = await response.json();
         if (!response.ok) {
-            alert(data.error || 'Failed to delete saved month.');
+            alert(data.error || '刪除儲存月份失敗。');
             return;
         }
 
@@ -2687,7 +2687,7 @@ async function deleteMonthRecords(monthId) {
         }
     } catch (error) {
         console.error('Failed to delete saved month', error);
-        alert('Failed to delete saved month.');
+        alert('刪除儲存月份失敗。');
     }
 }
 
@@ -2698,7 +2698,7 @@ async function deleteCourtOnlyMonth(monthId) {
         const response = await fetch(`/api/court_status/${monthId}?scope=court`, { method: 'DELETE' });
         const data = await response.json();
         if (!response.ok) {
-            alert(data.error || 'Failed to delete court status data.');
+            alert(data.error || '刪除場地狀態資料失敗。');
             return;
         }
         await loadCourtStatus();
@@ -2706,7 +2706,7 @@ async function deleteCourtOnlyMonth(monthId) {
         if (typeof loadLotteryMonthHistory === 'function') await loadLotteryMonthHistory();
     } catch (error) {
         console.error('Failed to delete court-only month', error);
-        alert('Failed to delete court status data.');
+        alert('刪除場地狀態資料失敗。');
     }
 }
 
@@ -2717,7 +2717,7 @@ async function deleteBidOnlyMonth(monthId) {
         const response = await fetch(`/api/lottery_bids/${monthId}`, { method: 'DELETE' });
         const data = await response.json();
         if (!response.ok) {
-            alert(data.error || 'Failed to delete bid data.');
+            alert(data.error || '刪除投籤資料失敗。');
             return;
         }
         await loadCourtStatus();
@@ -2725,7 +2725,7 @@ async function deleteBidOnlyMonth(monthId) {
         if (typeof loadLotteryMonthHistory === 'function') await loadLotteryMonthHistory();
     } catch (error) {
         console.error('Failed to delete bid-only month', error);
-        alert('Failed to delete bid data.');
+        alert('刪除投籤資料失敗。');
     }
 }
 
@@ -2802,7 +2802,7 @@ async function fetchAndDisplayCourt(monthId, elementId) {
     } catch (error) {
         console.error(`Failed to load court status for ${monthId}`, error);
         const displayDiv = document.getElementById(elementId);
-        if (displayDiv) displayDiv.innerHTML = '<p style="color:red; text-align:center;">Failed to load data.</p>';
+        if (displayDiv) displayDiv.innerHTML = '<p style="color:red; text-align:center;">載入資料失敗。</p>';
     }
 }
 
@@ -2844,7 +2844,7 @@ function renderCourtTable(monthId, containerId) {
     `;
 
     if (tableData.length === 0) {
-        html += `<tr><td colspan="3" style="color:#999; padding: 20px;">No court data.</td></tr>`;
+        html += `<tr><td colspan="3" style="color:#999; padding: 20px;">目前沒有場地資料。</td></tr>`;
     } else {
         tableData.forEach((row) => {
             html += `<tr><td><strong>${row.date}</strong></td>`;
@@ -2925,7 +2925,7 @@ async function saveCourtStatus() {
             courtEditState.draftRows = [];
             refreshCourtTableByMonth(monthId);
             updateCourtEditButton();
-            alert(`Court status for ${monthId} saved successfully.`);
+            alert(`${monthId} 的場地狀態已成功儲存。`);
         }
     } catch (error) {
         console.error('Error saving court status', error);
@@ -2954,7 +2954,7 @@ function renderCourtSlotEditor(slotData, rowDate, slotKey) {
     return `
         <td class="${getCourtCellClass(normalized)} court-edit-cell">
             <div class="court-edit-field">
-                <label>Color</label>
+                <label>顏色</label>
                 <select onchange="updateCourtCell('${rowDate}', '${slotKey}', 'color', this.value)">
                     <option value="none" ${normalized.color === 'none' ? 'selected' : ''}>無色</option>
                     <option value="yellow" ${normalized.color === 'yellow' ? 'selected' : ''}>黃色</option>
@@ -2962,11 +2962,11 @@ function renderCourtSlotEditor(slotData, rowDate, slotKey) {
                 </select>
             </div>
             <div class="court-edit-field">
-                <label>Line 1</label>
+                <label>第一行</label>
                 <input type="text" value="${escapeHtml(normalized.line1)}" placeholder="場 4, 5, 6, 7" oninput="updateCourtCell('${rowDate}', '${slotKey}', 'line1', this.value)">
             </div>
             <div class="court-edit-field">
-                <label>Line 2</label>
+                <label>第二行</label>
                 <input type="text" value="${escapeHtml(normalized.line2)}" placeholder="預約系所或紀錄" oninput="updateCourtCell('${rowDate}', '${slotKey}', 'line2', this.value)">
             </div>
         </td>
@@ -2978,7 +2978,7 @@ async function downloadCourtTableAsPng(monthId) {
     if (!target) return;
 
     if (typeof html2canvas !== 'function') {
-        alert('Download as PNG requires html2canvas to be loaded.');
+        alert('下載為 PNG 需要載入 html2canvas。');
         return;
     }
 
@@ -2995,7 +2995,7 @@ async function downloadCourtTableAsPng(monthId) {
         link.click();
     } catch (error) {
         console.error('Failed to export court table as PNG', error);
-        alert('PNG export failed. Please try again.');
+        alert('匯出 PNG 失敗，請再試一次。');
     }
 }
 
@@ -3017,11 +3017,11 @@ async function executeScraper(buttonEl) {
     const swapOut = swapOutRaw ? swapOutRaw.split(',').map(s => s.trim()) : [];
 
     if (!startDate || !endDate) {
-        alert('Please select both start and end dates.');
+        alert('請選擇開始與結束日期。');
         return;
     }
 
-    if (!confirm(`Run scraper for ${startDate} to ${endDate}?`)) return;
+    if (!confirm(`確定要執行 ${startDate} 到 ${endDate} 的爬蟲嗎？`)) return;
 
     const btn = buttonEl && buttonEl.tagName === 'BUTTON' ? buttonEl : null;
     const labelEl = btn ? btn.querySelector('.scraper-btn-label') : null;
@@ -3049,7 +3049,7 @@ async function executeScraper(buttonEl) {
         await pollScrapeStatus(monthId);
     } catch (error) {
         console.error('Error triggering scraper', error);
-        alert('Scraper failed. Please check the console.');
+        alert('爬蟲執行失敗，請檢查主控台。');
     } finally {
         if (btn) {
             if (labelEl) labelEl.innerText = originalText;
@@ -3071,7 +3071,7 @@ async function pollScrapeStatus(targetMonth, maxAttempts = 20) {
             }
 
             if (data.status === 'error') {
-                alert(data.message || 'System denied access. Please log in to the NTU venue system, then try scraping again.');
+                alert(data.message || '系統拒絕存取。請登入台大場地系統後，再試著重新爬取。');
                 return;
             }
 
@@ -3354,7 +3354,7 @@ function renderLotterySlotDisplay(slotData) {
     if (activeCourts.length === 0) return '<td class="court-empty">-</td>';
     const lines = activeCourts.map((court) => `
         <div class="lottery-slot-line">
-            <span>${court}</span>
+            <span>${court.replace('Court ', '場 ')}</span>
             <strong>${slot[court]}</strong>
         </div>
     `).join('');
@@ -3365,7 +3365,7 @@ function renderLotterySlotEditor(slotData, rowDate, slotKey) {
     const slot = normalizeLotterySlot(slotData || {});
     const rows = LOTTERY_COURTS.map((court) => `
         <div class="lottery-edit-row">
-            <label>${court.replace('Court ', '')}</label>
+            <label>${court.replace('Court ', '場 ')}</label>
             <select onchange="updateLotteryCell('${rowDate}', '${slotKey}', '${court}', this.value)">
                 ${[0, 1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${slot[court] === value ? 'selected' : ''}>${value}</option>`).join('')}
             </select>
@@ -3551,13 +3551,13 @@ async function saveLotteryBids() {
             await loadLotteryMonthHistory();
             await loadLotteryDashboard();
             updateLotteryEditButton();
-            alert(`Lottery bids for ${monthId} saved successfully.`);
+            alert(`${monthId} 的投籤紀錄已成功儲存。`);
         } else {
-            alert('Failed to save lottery bids.');
+            alert('儲存投籤紀錄失敗。');
         }
     } catch (error) {
         console.error('Error saving lottery bids', error);
-        alert('Failed to save lottery bids.');
+        alert('儲存投籤紀錄失敗。');
     }
 }
 
@@ -3639,7 +3639,7 @@ function renderProbabilityMatrix(stats, emptyMessage, selectedWeekdays, selected
     const times = ['18:00-20:00', '20:00-22:00'];
     const statMap = new Map(filteredStats.map((item) => [`${item.weekday}|${item.time}|${item.court}`, item]));
     let html = '<div class="court-dashboard-container"><div class="probability-matrix"><table class="court-table probability-table"><thead><tr><th>星期 / 時段</th>';
-    selectedCourts.forEach((court) => { html += `<th>${court}</th>`; });
+    selectedCourts.forEach((court) => { html += `<th>${court.replace('Court ', '場 ')}</th>`; });
     html += '</tr></thead><tbody>';
 
     weekdayNames.forEach((weekday) => {
@@ -3730,8 +3730,8 @@ function renderStrategyTable(rows, summaryLabel, selectedCourts) {
     const days = groupStrategyRows(rows);
     let html = `<div class="strategy-note">${escapeHtml(summaryLabel)}</div>`;
     html += '<div class="court-dashboard-container"><div class="probability-matrix"><table class="court-table probability-table"><thead><tr><th>日期</th>';
-    selectedCourts.forEach((court) => { html += `<th>${court}<br><small>18-20 / 20-22</small></th>`; });
-    html += '<th>Slot Success<br><small>18-20 / 20-22</small></th><th>Daily Success</th></tr></thead><tbody>';
+    selectedCourts.forEach((court) => { html += `<th>${court.replace('Court ', '場 ')}<br><small>18-20 / 20-22</small></th>`; });
+    html += '<th>時段成功率<br><small>18-20 / 20-22</small></th><th>單日成功率</th></tr></thead><tbody>';
 
     days.forEach((dayRow) => {
         html += `<tr><td><strong>${dayRow.date} (${dayRow.weekday})</strong></td>`;
