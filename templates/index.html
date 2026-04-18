@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Volleyball Team Management System</title>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <title>台大電機女排管理系統</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -13,50 +13,50 @@
     <div id="login-overlay" class="login-screen" style="display: none;">
         
         <div class="login-card" id="login-form-container">
-            <h3>Team Login</h3>
-            <input type="text" id="username" placeholder="Your Name">
+            <h3>隊員登入</h3>
+            <input type="text" id="username" placeholder="你的姓名">
             
             <div class="password-wrapper">
-                <input type="password" id="login-password" placeholder="Enter Password">
+                <input type="password" id="login-password" placeholder="輸入密碼">
                 <span class="toggle-password" onclick="togglePasswordVisibility('login-password', this)">
                     <i class="fas fa-eye-slash"></i>
                 </span>
             </div>
             
-            <button class="primary-btn full-width" onclick="handleLogin()">Login</button>
-            <p id="login-error" style="color: #ff4757; display: none; margin-top: 15px;">Invalid password or pending!</p>
+            <button class="primary-btn full-width" onclick="handleLogin()">登入</button>
+            <p id="login-error" style="color: #ff4757; display: none; margin-top: 15px;">密碼錯誤，或帳號尚未通過審核。</p>
             
             <div style="margin-top: 20px; font-size: 0.9rem;">
-                <span style="color: #666;">New to the team? </span>
-                <a href="#" onclick="toggleAuthMode('register')" style="color: var(--accent-color); font-weight: 600; text-decoration: none;">Register here</a>
+                <span style="color: #666;">第一次使用？</span>
+                <a href="#" onclick="toggleAuthMode('register')" style="color: var(--accent-color); font-weight: 600; text-decoration: none;">前往註冊</a>
             </div>
-            <button onclick="closeLogin()" class="close-btn">Cancel</button>
+            <button onclick="closeLogin()" class="close-btn">取消</button>
         </div>
 
         <div class="login-card" id="register-form-container" style="display: none;">
-            <h3>Create Account</h3>
-            <input type="text" id="reg-username" placeholder="Your Name">
+            <h3>建立帳號</h3>
+            <input type="text" id="reg-username" placeholder="你的姓名">
             
             <select id="reg-role">
-                <option value="member">Team Member</option>
-                <option value="captain">Captain</option>
+                <option value="member">隊員</option>
+                <option value="captain">隊長</option>
             </select>
             
             <div class="password-wrapper">
-                <input type="password" id="reg-password" placeholder="Create Password">
+                <input type="password" id="reg-password" placeholder="設定密碼">
                 <span class="toggle-password" onclick="togglePasswordVisibility('reg-password', this)">
                     <i class="fas fa-eye-slash"></i>
                 </span>
             </div>
             
-            <button class="primary-btn full-width" onclick="handleRegister()">Sign Up</button>
+            <button class="primary-btn full-width" onclick="handleRegister()">註冊</button>
             <p id="reg-message" style="margin-top: 15px; font-weight: 500;"></p>
             
             <div style="margin-top: 20px; font-size: 0.9rem;">
-                <span style="color: #666;">Already have an account? </span>
-                <a href="#" onclick="toggleAuthMode('login')" style="color: var(--accent-color); font-weight: 600; text-decoration: none;">Login here</a>
+                <span style="color: #666;">已經有帳號？</span>
+                <a href="#" onclick="toggleAuthMode('login')" style="color: var(--accent-color); font-weight: 600; text-decoration: none;">返回登入</a>
             </div>
-            <button onclick="closeLogin()" class="close-btn">Cancel</button>
+            <button onclick="closeLogin()" class="close-btn">取消</button>
         </div>
 
     </div>
@@ -64,12 +64,12 @@
     <div class="app-container sidebar-toggled" id="main-app" style="display: flex;">
         <nav class="sidebar">
             <ul class="menu-list">
-                <li onclick="showSection('home')" class="active">Home Overview</li>
-                <li onclick="showSection('schedule')">Court Status</li>
-                <li onclick="showSection('strategy')" class="captain-only auth-only">Probability & Strategy</li>
-                <li onclick="showSection('menu')" class="auth-only">Training Menu</li>
-                <li onclick="showSection('videos')" class="auth-only">Match Analysis & Videos</li> 
-                <li onclick="showSection('approval')" class="captain-only auth-only">Account Approvals</li>
+                <li onclick="showSection('home')" class="active">首頁總覽</li>
+                <li onclick="showSection('schedule')">場地狀態</li>
+                <li onclick="showSection('strategy')" class="captain-only auth-only">機率與策略</li>
+                <li onclick="showSection('menu')" class="auth-only">訓練菜單</li>
+                <li onclick="showSection('videos')" class="auth-only">比賽分析與影片</li> 
+                <li onclick="showSection('approval')" class="captain-only auth-only">帳號審核</li>
             </ul>
         </nav>
 
@@ -90,7 +90,7 @@
                 <div class="user-profile">
                     <div id="guest-zone">
 
-                        <button onclick="openLogin()" class="primary-btn-sm">Login</button>
+                        <button onclick="openLogin()" class="primary-btn-sm">登入</button>
 
                     </div>
 
@@ -103,8 +103,20 @@
                                 <span id="display-avatar">?</span>
                             </div>
                             <div class="avatar-dropdown-menu" id="avatarMenu">
-                                <button class="dropdown-item" onclick="openChangePassword()">Change Password</button>
-                                <button class="dropdown-item logout-action" onclick="handleLogout()">Log out</button>
+                                <button class="dropdown-item" onclick="openChangePassword()">
+                                    <span class="dropdown-item__icon"><i class="fas fa-key"></i></span>
+                                    <span class="dropdown-item__content">
+                                        <strong>更改密碼</strong>
+                                        <small>更新你的帳號密碼</small>
+                                    </span>
+                                </button>
+                                <button class="dropdown-item logout-action" onclick="handleLogout()">
+                                    <span class="dropdown-item__icon"><i class="fas fa-sign-out-alt"></i></span>
+                                    <span class="dropdown-item__content">
+                                        <strong>登出</strong>
+                                        <small>從這台裝置登出</small>
+                                    </span>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -119,17 +131,17 @@
                     <div class="announcement-card card">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                             <h3 style="margin:0;">公告</h3>
-                            <button class="primary-btn-sm captain-only auth-only" onclick="openEditAnnouncement()" style="padding: 4px 12px; font-size: 0.85rem;">Edit</button>
+                            <button class="primary-btn-sm captain-only auth-only" onclick="openEditAnnouncement()" style="padding: 4px 12px; font-size: 0.85rem;">編輯</button>
                         </div>
                         <div id="announcement-content">
-                            <p style="color:#999;">Loading announcements...</p>
+                            <p style="color:#999;">公告載入中...</p>
                         </div>
                     </div>
                     
                     <div class="section-header-row">
-                        <h3 class="section-title" style="margin-bottom: 0;">Team Gallery</h3>
+                        <h3 class="section-title" style="margin-bottom: 0;">隊伍相簿</h3>
                         <div class="upload-area auth-only">
-                            <span class="upload-hint">Supports JPG, PNG</span>
+                            <span class="upload-hint">支援 JPG、PNG</span>
                             
                             <input type="file" id="photo-upload" accept="image/*" multiple style="display: none;" onchange="updateFileCount(this)">
                             
@@ -140,7 +152,7 @@
                             <span id="file-chosen-text" class="file-status">尚未選擇檔案</span>
                             
                             <button class="primary-btn-sm" onclick="uploadPhotos()">
-                                <i class="fas fa-cloud-upload-alt"></i> Upload
+                                <i class="fas fa-cloud-upload-alt"></i> 上傳
                             </button>
                         </div>
                     </div>
@@ -150,23 +162,23 @@
                 </div>
 
                 <div id="schedule" class="content-section" style="display:none;">
-                    <h3 class="section-title">Court Status</h3>   
+                    <h3 class="section-title">場地狀態</h3>   
                     
                     <div class="card auth-only captain-only" style="background: white; padding: 20px 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px; border-top: 4px solid var(--accent-color); display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;">
 
                         <h4 style="margin: 0; color: #2c3e50; font-size: 1.15rem; display: flex; align-items: center; gap: 8px; margin-right: 15px; align-self: center;">
-                            <i class="fas fa-sliders-h" style="color: #7f8c8d;"></i> Scraper Control Panel
+                            <i class="fas fa-sliders-h" style="color: #7f8c8d;"></i> 爬蟲控制面板
                         </h4>
 
                         <div style="width: 1px; height: 60px; background: #ccc; margin: 0 60px;"></div>
 
                         <div style="display: flex; flex-direction: column; gap: 5px;">
-                            <label for="config-start" style="font-size: 0.8rem; font-weight: bold; color: #666;">Start Date</label>
+                            <label for="config-start" style="font-size: 0.8rem; font-weight: bold; color: #666;">開始日期</label>
                             <input type="date" id="config-start" style="padding: 8px; border: 1px solid #ccc; border-radius: 6px; width: 135px; color: #333;">
                         </div>
 
                         <div style="display: flex; flex-direction: column; gap: 5px;">
-                            <label for="config-end" style="font-size: 0.8rem; font-weight: bold; color: #666;">End Date</label>
+                            <label for="config-end" style="font-size: 0.8rem; font-weight: bold; color: #666;">結束日期</label>
                             <input type="date" id="config-end" style="padding: 8px; border: 1px solid #ccc; border-radius: 6px; width: 135px; color: #333;">
                         </div>
 
@@ -202,22 +214,22 @@
 
                     <div class="card">
                         <div class="court-weekday-filter" id="court-weekday-filter">
-                            <span class="court-weekday-filter__label">Weekdays</span>
-                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="1" checked> Mon</label>
-                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="2" checked> Tue</label>
-                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="3" checked> Wed</label>
-                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="4" checked> Thu</label>
-                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="5" checked> Fri</label>
-                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="6" checked> Sat</label>
-                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="0" checked> Sun</label>
+                            <span class="court-weekday-filter__label">星期</span>
+                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="1" checked> 一</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="2" checked> 二</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="3" checked> 三</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="4" checked> 四</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="5" checked> 五</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="6" checked> 六</label>
+                            <label class="court-weekday-option"><input type="checkbox" data-court-weekday="0" checked> 日</label>
                         </div>
 
                         <div class="tabs-container">
                             <button class="tab-btn active" id="tab-current" onclick="switchCourtTab('current')">
-                                This Month (<span id="label-current-month"></span>)
+                                本月（<span id="label-current-month"></span>）
                             </button>
                             <button class="tab-btn" id="tab-next" onclick="switchCourtTab('next')">
-                                Next Month (<span id="label-next-month"></span>)
+                                下月（<span id="label-next-month"></span>）
                             </button>
                         </div>
 
@@ -227,7 +239,7 @@
                 </div>
 
                 <div id="strategy" class="content-section" style="display:none;">
-                    <h3 class="section-title">Bids & Probability & Strategy</h3>
+                    <h3 class="section-title">投籤、機率與策略</h3>
 
                     <div class="card">
                         <div class="strategy-panel-header">
@@ -238,39 +250,39 @@
 
                         <div class="strategy-filter-row">
                             <div class="court-weekday-filter" id="lottery-weekday-filter">
-                                <span class="court-weekday-filter__label">Weekdays</span>
-                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="0" checked> Mon</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="1" checked> Tue</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="2" checked> Wed</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="3" checked> Thu</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="4" checked> Fri</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="5" checked> Sat</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="6" checked> Sun</label>
+                                <span class="court-weekday-filter__label">星期</span>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="0" checked> 一</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="1" checked> 二</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="2" checked> 三</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="3" checked> 四</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="4" checked> 五</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="5" checked> 六</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="6" checked> 日</label>
                             </div>
                             <div class="strategy-month-controls">
                                 <label>
-                                    <span>Selected Month</span>
+                                    <span>指定月份</span>
                                     <input type="month" id="lottery-month-picker">
                                 </label>
-                                <button class="court-btn" onclick="loadSelectedLotteryMonth()">Load Month</button>
+                                <button class="court-btn" onclick="loadSelectedLotteryMonth()">載入月份</button>
                                 <button class="court-btn" id="lottery-edit-btn" onclick="toggleLotteryEditMode()">
-                                    <i class="fas fa-edit"></i> Edit Bids
+                                    <i class="fas fa-edit"></i> 編輯投籤
                                 </button>
                             </div>
                         </div>
 
                         <div class="tabs-container">
                             <button class="tab-btn active" id="lottery-tab-current" onclick="switchLotteryTab('current')">
-                                This Month (<span id="label-lottery-current-month"></span>)
+                                本月（<span id="label-lottery-current-month"></span>）
                             </button>
                             <button class="tab-btn" id="lottery-tab-next" onclick="switchLotteryTab('next')">
-                                Next Month (<span id="label-lottery-next-month"></span>)
+                                下月（<span id="label-lottery-next-month"></span>）
                             </button>
                             <button class="tab-btn" id="lottery-tab-selected" onclick="switchLotteryTab('selected')">
-                                Selected Month (<span id="label-lottery-selected-month"></span>)
+                                指定月份（<span id="label-lottery-selected-month"></span>）
                             </button>
                             <button class="tab-btn" id="lottery-tab-saved" onclick="switchLotteryTab('saved')">
-                                Saved Months
+                                已儲存月份
                             </button>
                         </div>
 
@@ -283,7 +295,7 @@
                     <div class="card">
                         <div class="strategy-panel-header">
                             <div>
-                                <h4 class="strategy-panel-title">Probability Analysis</h4>
+                                <h4 class="strategy-panel-title">機率分析</h4>
                             </div>
                         </div>
 
@@ -296,7 +308,7 @@
                         </div>
                         <div class="strategy-filter-row">
                             <div class="court-weekday-filter" id="probability-weekday-filter">
-                                <span class="court-weekday-filter__label">Weekdays</span>
+                                <span class="court-weekday-filter__label">星期</span>
                                 <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="0" checked> Mon</label>
                                 <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="1" checked> Tue</label>
                                 <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="2" checked> Wed</label>
@@ -319,8 +331,8 @@
                         </div>
 
                         <div class="tabs-container">
-                            <button class="tab-btn active" id="probability-tab-selected" onclick="switchProbabilityTab('selected')">Selected Range</button>
-                            <button class="tab-btn" id="probability-tab-all" onclick="switchProbabilityTab('all')">All History</button>
+                            <button class="tab-btn active" id="probability-tab-selected" onclick="switchProbabilityTab('selected')">所選區間</button>
+                            <button class="tab-btn" id="probability-tab-all" onclick="switchProbabilityTab('all')">全部歷史</button>
                         </div>
 
                         <div id="probability-summary" class="strategy-summary"></div>
@@ -343,7 +355,7 @@
                         </div>
                         <div class="strategy-filter-row">
                             <div class="court-weekday-filter" id="strategy-weekday-filter">
-                                <span class="court-weekday-filter__label">Weekdays</span>
+                                <span class="court-weekday-filter__label">星期</span>
                                 <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="0"> Mon</label>
                                 <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="1" checked> Tue</label>
                                 <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="2"> Wed</label>
@@ -362,8 +374,8 @@
                             </div>
                         </div>
                         <div class="tabs-container">
-                            <button class="tab-btn active" id="strategy-tab-selected" onclick="switchStrategyTab('selected')">Selected Range</button>
-                            <button class="tab-btn" id="strategy-tab-all" onclick="switchStrategyTab('all')">All History</button>
+                            <button class="tab-btn active" id="strategy-tab-selected" onclick="switchStrategyTab('selected')">所選區間</button>
+                            <button class="tab-btn" id="strategy-tab-all" onclick="switchStrategyTab('all')">全部歷史</button>
                         </div>
                         <div id="strategy-selected-panel"></div>
                         <div id="strategy-all-panel" style="display: none;"></div>
@@ -373,55 +385,70 @@
                 <div id="menu" class="content-section" style="display:none;">
                     <div class="card menu-card captain-only auth-only">
                         <button type="button" class="menu-editor-toggle" onclick="toggleMenuEditor()">
-                            <span>Edit Menu Database</span>
+                            <span>編輯菜單資料庫</span>
                             <span id="menu-editor-toggle-icon">▾</span>
                         </button>
                         <div id="menu-editor-panel" class="menu-editor-panel" style="display:none;">
                             <div class="video-control-block__header">
-                                <h4 style="margin: 0;">Edit Menu Database</h4>
-                                <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                                    <button type="button" class="court-btn" onclick="startCreateMenuItem()">New Drill</button>
-                                    <button type="button" class="court-btn" onclick="saveMenuItem()">Save Drill</button>
+                                <h4 style="margin: 0;">編輯菜單資料庫</h4>
+                            </div>
+                            <div class="menu-import-panel">
+                                <div class="menu-import-panel__copy">
+                                    <strong>匯入 CSV</strong>
+                                    <span>上傳你匯出的菜單資料庫，並批次匯入 Supabase。</span>
+                                </div>
+                                <div class="menu-import-panel__controls">
+                                    <input type="file" id="menu-import-file" accept=".csv,text/csv">
+                                    <label class="menu-import-panel__replace">
+                                        <input type="checkbox" id="menu-import-replace">
+                                        <span>先覆蓋既有菜單</span>
+                                    </label>
+                                    <button type="button" class="court-btn" onclick="importMenuCsv()">匯入 CSV</button>
+                                </div>
+                                <div id="menu-import-status" class="menu-import-status"></div>
+                                <div class="menu-editor-actions">
+                                    <button type="button" class="court-btn" onclick="startCreateMenuItem()">新增菜單</button>
+                                    <button type="button" class="court-btn" onclick="saveMenuItem()">儲存菜單</button>
                                 </div>
                             </div>
                             <div class="menu-editor-layout">
                                 <div class="menu-editor-form">
                                     <input type="hidden" id="menu-edit-id">
                                     <label class="menu-inline-field">
-                                        <span>Drill Name</span>
+                                        <span>菜單名稱</span>
                                         <input type="text" id="menu-edit-name" placeholder="e.g. 接扣(一般)(左右)">
                                     </label>
                                     <label class="menu-inline-field">
-                                        <span>Players</span>
+                                        <span>人數</span>
                                         <input type="number" id="menu-edit-players" min="1" max="12" value="2">
                                     </label>
                                     <label class="menu-inline-field">
-                                        <span>Focus</span>
+                                        <span>訓練重點</span>
                                         <input type="text" id="menu-edit-focuses" placeholder="下手, 反應, 扣球">
                                     </label>
                                     <label class="menu-inline-field">
-                                        <span>Court Mode</span>
+                                        <span>場地需求</span>
                                         <input type="text" id="menu-edit-court-modes" placeholder="有場, 沒場">
                                     </label>
                                     <label class="menu-inline-field">
-                                        <span>Complexity</span>
+                                        <span>複雜度</span>
                                         <input type="text" id="menu-edit-complexities" placeholder="拆分, 串接">
                                     </label>
                                     <label class="menu-inline-field">
-                                        <span>Fatigue</span>
+                                        <span>累度</span>
                                         <input type="text" id="menu-edit-fatigue" placeholder="輕鬆, 普通, 累">
                                     </label>
                                     <label class="menu-inline-field">
-                                        <span>Difficulty</span>
+                                        <span>難度</span>
                                         <input type="text" id="menu-edit-difficulty" placeholder="簡單, 困難">
                                     </label>
                                     <div class="menu-toolbar-actions" style="margin-left:0;">
-                                        <button type="button" class="court-btn" onclick="resetMenuEditor()">Clear</button>
-                                        <button type="button" class="court-btn" onclick="deleteMenuItem()">Delete</button>
+                                        <button type="button" class="court-btn" onclick="resetMenuEditor()">清空</button>
+                                        <button type="button" class="court-btn" onclick="deleteMenuItem()">刪除</button>
                                     </div>
                                 </div>
                                 <div class="menu-editor-list-wrap">
-                                    <div class="menu-filter-title">Current Drills</div>
+                                    <div class="menu-filter-title">目前菜單</div>
                                     <div id="menu-editor-list" class="menu-editor-list"></div>
                                 </div>
                             </div>
@@ -433,7 +460,7 @@
                     <div class="card menu-card captain-only auth-only">
                         <div class="strategy-panel-header">
                             <div>
-                                <h4 class="strategy-panel-title">Practice Days</h4>
+                                <h4 class="strategy-panel-title">練球日</h4>
                             </div>
                         </div>
                         <div id="menu-practice-weekdays"></div>
@@ -441,52 +468,52 @@
                     <div class="card menu-card">
                         <div class="strategy-panel-header">
                             <div>
-                                <h4 class="strategy-panel-title">Drill Filters</h4>
+                                <h4 class="strategy-panel-title">菜單篩選</h4>
                             </div>
                         </div>
                         <div class="menu-toolbar">
                             <label class="menu-inline-field">
-                                <span>Available Players</span>
+                                <span>可用人數</span>
                                 <input type="number" id="menu-players" min="1" max="12" value="6">
                             </label>
                             <label class="menu-inline-field">
-                                <span>Court</span>
+                                <span>場地</span>
                                 <select id="menu-court-mode">
-                                    <option value="">Any</option>
-                                    <option value="有場">Has Court</option>
-                                    <option value="沒場">No Court</option>
+                                    <option value="">不限</option>
+                                    <option value="有場">有場</option>
+                                    <option value="沒場">沒場</option>
                                 </select>
                             </label>
                             <label class="menu-inline-field">
-                                <span>Plan Size</span>
+                                <span>菜單數量</span>
                                 <select id="menu-plan-size">
-                                    <option value="4">4 Drills</option>
-                                    <option value="5" selected>5 Drills</option>
-                                    <option value="6">6 Drills</option>
-                                    <option value="8">8 Drills</option>
+                                    <option value="4">4 個菜單</option>
+                                    <option value="5" selected>5 個菜單</option>
+                                    <option value="6">6 個菜單</option>
+                                    <option value="8">8 個菜單</option>
                                 </select>
                             </label>
                             <div class="menu-toolbar-actions">
-                                <button type="button" class="court-btn" onclick="showAllMenuMatches()">Show All Matches</button>
-                                <button type="button" class="court-btn" onclick="selectAllMenuFilters()">Select All</button>
-                                <button type="button" class="court-btn" onclick="resetMenuFilters()">Reset</button>
+                                <button type="button" class="court-btn" onclick="showAllMenuMatches()">顯示全部符合項目</button>
+                                <button type="button" class="court-btn" onclick="selectAllMenuFilters()">全選</button>
+                                <button type="button" class="court-btn" onclick="resetMenuFilters()">重設</button>
                             </div>
                         </div>
                         <div class="menu-filter-sections">
                             <div class="menu-filter-group">
-                                <div class="menu-filter-title">Training Focus</div>
+                                <div class="menu-filter-title">訓練重點</div>
                                 <div id="menu-focus-grid" class="checkbox-grid"></div>
                             </div>
                             <div class="menu-filter-group">
-                                <div class="menu-filter-title">Complexity</div>
+                                <div class="menu-filter-title">複雜度</div>
                                 <div id="menu-complexity-grid" class="checkbox-grid menu-chip-grid"></div>
                             </div>
                             <div class="menu-filter-group">
-                                <div class="menu-filter-title">Fatigue</div>
+                                <div class="menu-filter-title">累度</div>
                                 <div id="menu-fatigue-grid" class="checkbox-grid menu-chip-grid"></div>
                             </div>
                             <div class="menu-filter-group">
-                                <div class="menu-filter-title">Difficulty</div>
+                                <div class="menu-filter-title">難度</div>
                                 <div id="menu-difficulty-grid" class="checkbox-grid menu-chip-grid"></div>
                             </div>
                         </div>
@@ -494,24 +521,22 @@
                     <div class="card menu-card captain-only auth-only menu-builder-card">
                         <div class="strategy-panel-header">
                             <div>
-                                <h4 class="strategy-panel-title">Plan Builder</h4>
+                                <h4 class="strategy-panel-title">菜單編排</h4>
                             </div>
                         </div>
                         <div class="menu-builder-layout">
                             <div class="menu-builder-half">
-                                <div class="menu-builder-half__title">First Half</div>
                                 <div id="menu-first-half-zone" class="menu-drop-zone" ondragover="handlePracticeMenuDragOver(event)" ondrop="handlePracticeMenuDrop(event, 'first_half')"></div>
                                 <div class="menu-manual-add">
-                                    <input type="text" id="menu-first-half-manual" placeholder="Type a drill name...">
-                                    <button type="button" class="court-btn" onclick="addManualPracticeMenuItem('first_half')">Add</button>
+                                    <input type="text" id="menu-first-half-manual" placeholder="輸入菜單名稱...">
+                                    <button type="button" class="court-btn" onclick="addManualPracticeMenuItem('first_half')">加入</button>
                                 </div>
                             </div>
                             <div class="menu-builder-half">
-                                <div class="menu-builder-half__title">Second Half</div>
                                 <div id="menu-second-half-zone" class="menu-drop-zone" ondragover="handlePracticeMenuDragOver(event)" ondrop="handlePracticeMenuDrop(event, 'second_half')"></div>
                                 <div class="menu-manual-add">
-                                    <input type="text" id="menu-second-half-manual" placeholder="Type a drill name...">
-                                    <button type="button" class="court-btn" onclick="addManualPracticeMenuItem('second_half')">Add</button>
+                                    <input type="text" id="menu-second-half-manual" placeholder="輸入菜單名稱...">
+                                    <button type="button" class="court-btn" onclick="addManualPracticeMenuItem('second_half')">加入</button>
                                 </div>
                             </div>
                         </div>
@@ -520,26 +545,26 @@
                 </div>
 
                 <div id="videos" class="content-section" style="display:none;">
-                    <h3 class="section-title">Match Analysis & Videos</h3>
+                    <h3 class="section-title">比賽分析與影片</h3>
 
                     <div class="card video-control-card">
                         <div class="video-control-grid">
                             <div class="video-control-block">
                                 <div class="video-control-block__header">
-                                    <h4 style="margin: 0;">Create Match Section</h4>
-                                    <button class="primary-btn" onclick="createVideoSection()" style="padding: 6px 16px; font-size: 0.9em;">Create</button>
+                                    <h4 style="margin: 0;">新增比賽分類</h4>
+                                    <button class="primary-btn" onclick="createVideoSection()" style="padding: 6px 16px; font-size: 0.9em;">建立</button>
                                 </div>
-                                <input type="text" id="video-section-title" placeholder="e.g. 2026 DaDian Cup" class="video-control-input">
+                                <input type="text" id="video-section-title" placeholder="例如：2026 大電盃" class="video-control-input">
                             </div>
                             <div class="video-control-block">
                                 <div class="video-control-block__header">
-                                    <h4 style="margin: 0;">Add Video to Section</h4>
-                                    <button class="primary-btn" onclick="addVideo()" style="padding: 6px 16px; font-size: 0.9em;">Add</button>
+                                    <h4 style="margin: 0;">將影片加入分類</h4>
+                                    <button class="primary-btn" onclick="addVideo()" style="padding: 6px 16px; font-size: 0.9em;">加入</button>
                                 </div>
                                 <div class="video-add-grid">
                                     <select id="video-section-select" class="video-control-input"></select>
-                                    <input type="text" id="video-title" placeholder="Custom video title" class="video-control-input">
-                                    <input type="text" id="video-url" placeholder="Paste YouTube link here..." class="video-control-input">
+                                    <input type="text" id="video-title" placeholder="自訂影片標題" class="video-control-input">
+                                    <input type="text" id="video-url" placeholder="貼上 YouTube 連結..." class="video-control-input">
                                 </div>
                             </div>
                         </div>
@@ -549,21 +574,21 @@
                 </div>
                 
                 <div id="approval" class="content-section" style="display:none;">
-                    <h3 class="section-title">Team Management</h3>
+                    <h3 class="section-title">隊伍管理</h3>
                     
                     <div class="card" style="margin-bottom: 20px;">
-                        <h4 style="margin-bottom: 15px; color: var(--accent-color);">Pending Approvals</h4>
-                        <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Review and approve new team members to grant them access.</p>
+                        <h4 style="margin-bottom: 15px; color: var(--accent-color);">待審核帳號</h4>
+                        <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">審核新隊員申請，通過後即可使用系統。</p>
                         <div id="pending-users-container">
-                            <p style="text-align:center; color:#999; padding: 20px;">Loading pending requests...</p>
+                            <p style="text-align:center; color:#999; padding: 20px;">待審核名單載入中...</p>
                         </div>
                     </div>
 
                     <div class="card">
-                        <h4 style="margin-bottom: 15px; color: var(--primary-color);">Current Roster & Roles</h4>
-                        <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Manage roles (Promote to Captain or Demote to Member) for next semester's transition.</p>
+                        <h4 style="margin-bottom: 15px; color: var(--primary-color);">目前名單與權限</h4>
+                        <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">管理隊員權限，方便學期交接時調整角色。</p>
                         <div id="team-members-container">
-                            <p style="text-align:center; color:#999; padding: 20px;">Loading team members...</p>
+                            <p style="text-align:center; color:#999; padding: 20px;">隊員名單載入中...</p>
                         </div>
                     </div>
                 </div>
@@ -579,30 +604,30 @@
     <div id="showcase-crop-modal" class="lightbox showcase-crop-modal" style="display: none;">
         <div class="showcase-crop-modal__dialog">
             <div class="showcase-crop-modal__header">
-                <h3>Crop Showcase Image</h3>
+                <h3>裁切輪播圖片</h3>
                 <button type="button" class="showcase-crop-modal__close" onclick="closeShowcaseCropModal()">&times;</button>
             </div>
             <div class="showcase-crop-modal__stage-wrap">
                 <div class="showcase-crop-stage" id="showcase-crop-stage">
-                    <img id="showcase-crop-image" alt="Showcase crop preview">
+                    <img id="showcase-crop-image" alt="輪播圖片裁切預覽">
                     <div class="showcase-crop-guide showcase-crop-guide--modal" aria-hidden="true">
                         <div class="showcase-crop-guide__mask showcase-crop-guide__mask--left"></div>
                         <div class="showcase-crop-guide__mask showcase-crop-guide__mask--right"></div>
                         <div class="showcase-crop-guide__safe">
-                            <span class="showcase-crop-guide__safe-label">Sidebar open safe area</span>
+                            <span class="showcase-crop-guide__safe-label">選單展開安全範圍</span>
                         </div>
-                        <span class="showcase-crop-guide__full-label">Sidebar closed safe area</span>
+                        <span class="showcase-crop-guide__full-label">選單收合安全範圍</span>
                     </div>
                 </div>
             </div>
             <div class="showcase-crop-modal__controls">
                 <label>
-                    <span>Zoom</span>
+                    <span>縮放</span>
                     <input type="range" id="showcase-crop-zoom" min="1" max="3" step="0.01" value="1">
                 </label>
             </div>
             <div class="showcase-crop-nudge">
-                <span>Move</span>
+                <span>微調位置</span>
                 <div class="showcase-crop-nudge__grid">
                     <button type="button" class="showcase-crop-nudge__btn showcase-crop-nudge__btn--up" onclick="nudgeShowcaseCrop(0, -12)">↑</button>
                     <button type="button" class="showcase-crop-nudge__btn showcase-crop-nudge__btn--left" onclick="nudgeShowcaseCrop(-12, 0)">←</button>
@@ -611,50 +636,50 @@
                 </div>
             </div>
             <div class="showcase-crop-modal__actions">
-                <button type="button" class="court-btn" onclick="closeShowcaseCropModal()">Cancel</button>
-                <button type="button" class="court-btn" onclick="saveShowcaseCrop()">Save Crop</button>
+                <button type="button" class="court-btn" onclick="closeShowcaseCropModal()">取消</button>
+                <button type="button" class="court-btn" onclick="saveShowcaseCrop()">儲存裁切</button>
             </div>
         </div>
     </div>
     <div id="video-notes-modal" class="lightbox video-notes-modal" style="display: none;">
         <div class="video-notes-modal__dialog">
             <div class="video-notes-modal__header">
-                <h3 id="video-notes-modal-title">Match Notes</h3>
+                <h3 id="video-notes-modal-title">比賽筆記</h3>
                 <button type="button" class="video-notes-modal__close" onclick="closeVideoNotesModal()">&times;</button>
             </div>
             <div id="video-notes-list" class="video-notes-list"></div>
             <div class="video-notes-modal__toolbar">
-                <button type="button" class="court-btn" onclick="addVideoNoteRow()">Add Match Note</button>
+                <button type="button" class="court-btn" onclick="addVideoNoteRow()">新增比賽筆記</button>
             </div>
             <div class="video-notes-modal__actions">
-                <button type="button" class="court-btn" onclick="closeVideoNotesModal()">Cancel</button>
-                <button type="button" class="court-btn" onclick="saveVideoNotes()">Save</button>
+                <button type="button" class="court-btn" onclick="closeVideoNotesModal()">取消</button>
+                <button type="button" class="court-btn" onclick="saveVideoNotes()">儲存</button>
             </div>
         </div>
     </div>
     <div id="change-password-overlay" class="login-screen" style="display: none;">
         <div class="login-card">
-            <h3>Change Password</h3>
+            <h3>更改密碼</h3>
             <div class="password-wrapper">
-                <input type="password" id="old-password" placeholder="Current Password">
+                <input type="password" id="old-password" placeholder="目前密碼">
             </div>
             <div class="password-wrapper">
-                <input type="password" id="new-password" placeholder="New Password">
+                <input type="password" id="new-password" placeholder="新密碼">
             </div>
-            <button class="primary-btn full-width" onclick="submitChangePassword()">Update Password</button>
+            <button class="primary-btn full-width" onclick="submitChangePassword()">更新密碼</button>
             <p id="cp-message" style="margin-top: 15px; font-weight: 500;"></p>
-            <button onclick="closeChangePassword()" class="close-btn">Cancel</button>
+            <button onclick="closeChangePassword()" class="close-btn">取消</button>
         </div>
     </div>
     <div id="edit-announcement-overlay" class="login-screen" style="display: none;">
         <div class="login-card" style="max-width: 500px;">
-            <h3>Edit Announcements</h3>
+            <h3>編輯公告</h3>
             <p style="font-size: 0.85rem; color: #666; margin-bottom: 15px; text-align: left;">
                 每次換行都會自動產生一個新項目，冒號前面的字會自動變粗體喔！
             </p>
-            <textarea id="announcement-textarea" rows="8" style="width: 100%; padding: 12px; border: 1.5px solid #eee; border-radius: 8px; margin-bottom: 20px; font-family: inherit; resize: vertical;" placeholder="Type announcements here..."></textarea>
-            <button class="primary-btn full-width" onclick="submitAnnouncements()">Save Changes</button>
-            <button onclick="closeEditAnnouncement()" class="close-btn">Cancel</button>
+            <textarea id="announcement-textarea" rows="8" style="width: 100%; padding: 12px; border: 1.5px solid #eee; border-radius: 8px; margin-bottom: 20px; font-family: inherit; resize: vertical;" placeholder="在這裡輸入公告內容..."></textarea>
+            <button class="primary-btn full-width" onclick="submitAnnouncements()">儲存變更</button>
+            <button onclick="closeEditAnnouncement()" class="close-btn">取消</button>
         </div>
     </div>
     

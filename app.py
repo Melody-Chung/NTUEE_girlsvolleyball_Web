@@ -14,6 +14,7 @@ from supabase import Client, create_client
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
+from menu_import import load_rows_from_bytes, serialize_payload as serialize_imported_menu_payload
 import settings
 
 app = Flask(__name__)
@@ -237,7 +238,7 @@ def resolve_showcase_crop_path(filename):
 
 LOTTERY_COURTS = ["Court 4", "Court 5", "Court 6", "Court 7"]
 LOTTERY_TIMES = {"slot1": "18:00-20:00", "slot2": "20:00-22:00"}
-LOTTERY_WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+LOTTERY_WEEKDAY_NAMES = ["一", "二", "三", "四", "五", "六", "日"]
 MENU_COMPLEXITY_DEFAULTS = ["拆分", "串接"]
 MENU_DIFFICULTY_DEFAULTS = ["簡單", "困難"]
 MENU_COMPLEXITY_ORDER = {"拆分": 0, "串接": 1}
@@ -362,7 +363,7 @@ def normalize_menu_row_payload(payload, existing_id=None):
     payload = payload or {}
     name = str(payload.get("name") or "").strip()
     if not name:
-        raise ValueError("Menu name is required")
+        raise ValueError("請輸入菜單名稱")
 
     try:
         people_count = int(payload.get("people_count") or 0)
@@ -806,18 +807,18 @@ def register():
     role = data.get("role")
 
     if not username or not password or not role:
-        return jsonify({"error": "Missing data"}), 400
+        return jsonify({"error": "缺少必要資料"}), 400
 
     hashed_pw = generate_password_hash(password)
 
     existing = sb_select_one("users", columns="id", filters=[("eq", "username", username)])
     if existing:
-        return jsonify({"error": "Username already exists."}), 400
+        return jsonify({"error": "此姓名已被註冊。"}), 400
     sb_insert("users", {"username": username, "password": hashed_pw, "role": role})
     return jsonify(
         {
             "status": "success",
-            "message": "Registration successful. Please wait for captain approval.",
+            "message": "註冊成功，請等待隊長審核。",
         }
     )
 
@@ -830,19 +831,19 @@ def login():
 
     user = sb_select_one("users", columns="password, role, status", filters=[("eq", "username", username)])
     if not user:
-        return jsonify({"error": "User not found."}), 404
+        return jsonify({"error": "找不到此使用者。"}), 404
 
     db_password = user["password"]
     role = user["role"]
     status = user["status"]
 
     if not check_password_hash(db_password, password):
-        return jsonify({"error": "Invalid password."}), 401
+        return jsonify({"error": "密碼錯誤。"}), 401
 
     if status == "pending":
-        return jsonify({"error": "Account is pending approval from a captain."}), 403
+        return jsonify({"error": "帳號尚待隊長審核。"}), 403
     if status == "rejected":
-        return jsonify({"error": "Account registration was rejected."}), 403
+        return jsonify({"error": "帳號申請已被拒絕。"}), 403
 
     return jsonify({"status": "success", "role": role, "username": username})
 
@@ -854,7 +855,7 @@ def change_password():
     new_password = data.get('new_password')
 
     if not username or not old_password or not new_password:
-        return jsonify({"error": "Missing fields."}), 400
+        return jsonify({"error": "缺少必要欄位。"}), 400
 
     user = sb_select_one("users", columns="password", filters=[("eq", "username", username)])
     if not user:
@@ -862,11 +863,11 @@ def change_password():
 
     db_password = user["password"]
     if not check_password_hash(db_password, old_password):
-        return jsonify({"error": "Incorrect current password."}), 401
+        return jsonify({"error": "目前密碼錯誤。"}), 401
 
     hashed_new_password = generate_password_hash(new_password)
     sb_update("users", {"password": hashed_new_password}, [("eq", "username", username)])
-    return jsonify({"message": "Password updated successfully."}), 200
+    return jsonify({"message": "密碼更新成功。"}), 200
 
 @app.route("/api/pending_users", methods=["GET"])
 def get_pending_users():
@@ -1272,6 +1273,49 @@ def create_menu_item():
     return jsonify({"status": "success", "item": row})
 
 
+@app.route("/api/menu_data/import", methods=["POST"])
+def import_menu_data():
+    uploaded_file = request.files.get("file")
+    if not uploaded_file or not uploaded_file.filename:
+        return jsonify({"error": "請先選擇要匯入的 CSV 檔案。"}), 400
+
+    replace_existing = str(request.form.get("replace", "")).strip().lower() in {"1", "true", "yes", "on"}
+
+    try:
+        rows = load_rows_from_bytes(uploaded_file.read())
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+
+    if not rows:
+        return jsonify({"error": "上傳的 CSV 內沒有可匯入的菜單資料。"}), 400
+
+    if replace_existing:
+        sb_delete("menu_drills", [("neq", "id", 0)])
+
+    timestamp = datetime.now().isoformat()
+    payload = []
+    for row in rows:
+        item = serialize_imported_menu_payload(row)
+        item["updated_at"] = timestamp
+        payload.append(item)
+
+    batch_size = 200
+    inserted_count = 0
+    for start in range(0, len(payload), batch_size):
+        chunk = payload[start : start + batch_size]
+        sb_insert("menu_drills", chunk)
+        inserted_count += len(chunk)
+
+    return jsonify(
+        {
+            "status": "success",
+            "count": inserted_count,
+            "replaced": replace_existing,
+            "filename": uploaded_file.filename,
+        }
+    )
+
+
 @app.route("/api/menu_data/<int:item_id>", methods=["PUT", "DELETE"])
 def update_or_delete_menu_item(item_id):
     if request.method == "DELETE":
@@ -1298,7 +1342,7 @@ def update_or_delete_menu_item(item_id):
         [("eq", "id", item_id)],
     )
     if not updated:
-        return jsonify({"error": "Menu item not found"}), 404
+        return jsonify({"error": "找不到這筆菜單資料"}), 404
     return jsonify({"status": "success", "item": row})
 
 
@@ -1426,7 +1470,7 @@ def get_strategy():
     return jsonify(
         {
             "best_court": "Court 5",
-            "suggestion": "Focus tickets on Thursday second half.",
+            "suggestion": "建議把籤數集中在星期四下半場。",
         }
     )
 
