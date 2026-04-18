@@ -292,7 +292,12 @@ function applyLoginUI(username, role) {
     
     const roleDisplay = document.getElementById('display-role');
     if (roleDisplay) {
-        roleDisplay.innerText = role.toUpperCase();
+        let roleName = role.toUpperCase();
+        if (role === 'captain') roleName = '隊長';
+        else if (role === 'member') roleName = '隊員';
+        else if (role === 'guest') roleName = '訪客';
+        
+        roleDisplay.innerText = roleName;
         roleDisplay.classList.remove('captain');
         if (role === 'captain') roleDisplay.classList.add('captain');
     }
@@ -1135,7 +1140,7 @@ async function uploadPhotos() {
     });
     
     // Attach uploader name from LocalStorage
-    const uploader = localStorage.getItem('vbt_username') || 'Guest';
+    const uploader = localStorage.getItem('vbt_username') || '訪客';
     formData.append('uploader', uploader);
 
     // Update UI to show loading state
@@ -1758,8 +1763,8 @@ function createPracticeMenuSourceItem(row, sourceLabel, sourceType) {
             </div>
             <div class="menu-source-item__actions">
                 <span class="menu-source-item__badge">${escapeHtml(sourceLabel)}</span>
-                ${isCaptain ? `<button type="button" class="court-btn" onclick="addPracticeMenuItem('${sourceType}', ${Number(row.id || 0)}, decodeURIComponent('${encodedName}'), 'first_half')">+ 1st</button>` : ''}
-                ${isCaptain ? `<button type="button" class="court-btn" onclick="addPracticeMenuItem('${sourceType}', ${Number(row.id || 0)}, decodeURIComponent('${encodedName}'), 'second_half')">+ 2nd</button>` : ''}
+                ${isCaptain ? `<button type="button" class="court-btn" onclick="addPracticeMenuItem('${sourceType}', ${Number(row.id || 0)}, decodeURIComponent('${encodedName}'), 'first_half')">+ 上半</button>` : ''}
+                ${isCaptain ? `<button type="button" class="court-btn" onclick="addPracticeMenuItem('${sourceType}', ${Number(row.id || 0)}, decodeURIComponent('${encodedName}'), 'second_half')">+ 下半</button>` : ''}
             </div>
         </article>
     `;
@@ -2539,7 +2544,10 @@ function escapeHtml(value) {
 }
 
 function simplifyCourtName(value) {
-    return String(value ?? '').replace(/Volleyball\s+Court/gi, 'Court').trim();
+    return String(value ?? '')
+        .replace(/Volleyball\s+Court\s*/gi, '場 ')
+        .replace(/Court\s*/gi, '場 ')
+        .trim();
 }
 
 function normalizeCourtSlot(slotData) {
