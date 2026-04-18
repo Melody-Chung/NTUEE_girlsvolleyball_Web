@@ -544,6 +544,26 @@ function buildSectionReorderHandle(scope, sectionId) {
     `;
 }
 
+function buildSectionCardDndAttrs(scope, sectionId) {
+    if (!isCaptainRole()) return '';
+    return `ondragover="handleSectionDragOver(event, '${scope}', '${sectionId}')" ondrop="handleSectionDrop(event, '${scope}', '${sectionId}')" ondragleave="handleSectionDragLeave(event)"`;
+}
+
+function buildSectionRenameButton(scope, sectionId, currentTitle) {
+    if (!isCaptainRole()) return '';
+    const encodedTitle = encodeURIComponent(String(currentTitle || ''));
+    return `
+        <button
+            type="button"
+            class="video-section-card__icon-btn"
+            title="更改 session 名稱"
+            onclick="renameSection('${scope}', '${sectionId}', decodeURIComponent('${encodedTitle}'))"
+        >
+            <i class="fas fa-pen"></i>
+        </button>
+    `;
+}
+
 function updateVideoSectionSelect() {
     const select = document.getElementById('video-section-select');
     if (!select) return;
@@ -589,7 +609,7 @@ function renderVideoSections() {
     }
 
     container.innerHTML = sections.map((section) => `
-        <div class="video-section-card" data-section-scope="video" data-section-id="${section.id}" ondragover="handleSectionDragOver(event, 'video', '${section.id}')" ondrop="handleSectionDrop(event, 'video', '${section.id}')" ondragleave="handleSectionDragLeave(event)">
+        <div class="video-section-card" data-section-scope="video" data-section-id="${section.id}" ${buildSectionCardDndAttrs('video', section.id)}>
             <div class="video-section-card__header">
                 <div class="video-section-card__title">
                     ${buildSectionReorderHandle('video', section.id)}
@@ -600,7 +620,10 @@ function renderVideoSections() {
                         <small>${Array.isArray(section.notes) ? section.notes.length : 0}</small>
                     </button>
                 </div>
-                <button type="button" class="video-section-card__delete" onclick="deleteVideoSection(${section.id})">刪除</button>
+                <div class="video-section-card__actions">
+                    ${buildSectionRenameButton('video', section.id, section.title)}
+                    ${isCaptainRole() ? `<button type="button" class="video-section-card__delete" onclick="deleteVideoSection(${section.id})">刪除</button>` : ''}
+                </div>
             </div>
             <div class="video-section-card__body">
                 ${section.videos && section.videos.length
@@ -646,7 +669,7 @@ function renderTeamResourceSections() {
     }
 
     container.innerHTML = sections.map((section) => `
-        <div class="video-section-card" data-section-scope="team_resource" data-section-id="${section.id}" ondragover="handleSectionDragOver(event, 'team_resource', '${section.id}')" ondrop="handleSectionDrop(event, 'team_resource', '${section.id}')" ondragleave="handleSectionDragLeave(event)">
+        <div class="video-section-card" data-section-scope="team_resource" data-section-id="${section.id}" ${buildSectionCardDndAttrs('team_resource', section.id)}>
             <div class="video-section-card__header">
                 <div class="video-section-card__title">
                     ${buildSectionReorderHandle('team_resource', section.id)}
@@ -658,7 +681,10 @@ function renderTeamResourceSections() {
                     </button>
                     ${isCaptainRole() ? `<span class="resource-visibility-chip">${section.visibility === 'all' ? '隊長隊員可見' : '只有隊長可見'}</span>` : ''}
                 </div>
-                ${isCaptainRole() ? `<button type="button" class="video-section-card__delete" onclick="deleteTeamResourceSection('${section.id}')">刪除</button>` : ''}
+                <div class="video-section-card__actions">
+                    ${buildSectionRenameButton('team_resource', section.id, section.title)}
+                    ${isCaptainRole() ? `<button type="button" class="video-section-card__delete" onclick="deleteTeamResourceSection('${section.id}')">刪除</button>` : ''}
+                </div>
             </div>
             <div class="video-section-card__body">
                 ${section.resources && section.resources.length
@@ -756,6 +782,32 @@ async function deleteTeamResourceSection(sectionId) {
     }
     if (activeTeamResourceNotesSectionId === sectionId) closeVideoNotesModal();
     await loadTeamResources();
+}
+
+async function renameSection(scope, sectionId, currentTitle) {
+    if (!isCaptainRole()) return;
+    const nextTitle = window.prompt('請輸入新的 session 名稱', currentTitle || '');
+    if (nextTitle === null) return;
+    const title = nextTitle.trim();
+    if (!title || title === String(currentTitle || '').trim()) return;
+
+    const endpoint = scope === 'video'
+        ? `/api/video_sections/${sectionId}`
+        : `/api/team_resources/sections/${sectionId}`;
+
+    const response = await fetch(endpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+    });
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        alert(data.error || '更改 session 名稱失敗。');
+        return;
+    }
+
+    if (scope === 'video') await loadVideoSections();
+    else await loadTeamResources();
 }
 
 function clearSectionDragIndicators() {
@@ -2772,8 +2824,8 @@ function renderCourtTable(monthId, containerId) {
                     <button class="court-btn" onclick="saveCourtStatus()">儲存表格</button>
                     <button class="court-btn" onclick="toggleEditMode(false)">取消編輯</button>
                 ` : `
-                    <button class="court-btn" onclick="toggleNames()">Hide / Show Names</button>
-                    <button class="court-btn" onclick="downloadCourtTableAsPng('${monthId}')">Download as PNG</button>
+                    <button class="court-btn" onclick="toggleNames()">隱藏 / 隱藏名稱</button>
+                    <button class="court-btn" onclick="downloadCourtTableAsPng('${monthId}')">下載 PNG</button>
                 `}
             </div>
         `;

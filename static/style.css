@@ -1643,6 +1643,32 @@ select:focus, input:focus {
     font-weight: 600;
 }
 
+.video-section-card__actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex: 0 0 auto;
+}
+
+.video-section-card__icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid #d8e2ea;
+    border-radius: 10px;
+    background: #f8fbfd;
+    color: #556f81;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.video-section-card__icon-btn:hover {
+    background: #eaf2f7;
+    color: #243746;
+}
+
 .section-reorder-handle {
     display: inline-flex;
     align-items: center;

@@ -1092,8 +1092,16 @@ def video_sections_api():
     return jsonify(sections)
 
 
-@app.route("/api/video_sections/<int:section_id>", methods=["DELETE"])
-def delete_video_section(section_id):
+@app.route("/api/video_sections/<int:section_id>", methods=["PUT", "DELETE"])
+def update_or_delete_video_section(section_id):
+    if request.method == "PUT":
+        data = request.json or {}
+        title = (data.get("title") or "").strip()
+        if not title:
+            return jsonify({"error": "Missing title"}), 400
+        updated = sb_update("video_sections", {"title": title}, [("eq", "id", section_id)])
+        return jsonify({"status": "success", "updated": bool(updated)})
+
     deleted_videos = sb_delete("videos", [("eq", "section_id", section_id)])
     deleted_sections = sb_delete("video_sections", [("eq", "id", section_id)])
     deleted = bool(deleted_videos or deleted_sections)
@@ -1144,7 +1152,7 @@ def get_team_resources():
     role = (request.args.get("role") or "").strip().lower()
     payload = get_team_resources_payload()
     sections = filter_team_sections_by_role(payload.get("sections", []), role)
-    return jsonify(sort_sections_by_saved_order(sections, get_video_section_order()))
+    return jsonify(sections)
 
 
 @app.route("/api/video_sections/reorder", methods=["POST"])
@@ -1181,9 +1189,24 @@ def create_team_resource_section():
     return jsonify({"status": "success", "section": section})
 
 
-@app.route("/api/team_resources/sections/<section_id>", methods=["DELETE"])
-def delete_team_resource_section(section_id):
+@app.route("/api/team_resources/sections/<section_id>", methods=["PUT", "DELETE"])
+def update_or_delete_team_resource_section(section_id):
     payload = get_team_resources_payload()
+    if request.method == "PUT":
+        data = request.json or {}
+        title = (data.get("title") or "").strip()
+        if not title:
+            return jsonify({"error": "Missing title"}), 400
+        updated = False
+        for section in payload.get("sections") or []:
+            if section.get("id") == section_id:
+                section["title"] = title
+                updated = True
+                break
+        if updated:
+            save_team_resources_payload(payload)
+        return jsonify({"status": "success", "updated": updated})
+
     sections = payload.get("sections") or []
     next_sections = [section for section in sections if section.get("id") != section_id]
     deleted = len(next_sections) != len(sections)
