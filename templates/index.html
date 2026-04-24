@@ -72,14 +72,21 @@
                 <li onclick="showSection('videos')" class="auth-only">比賽分析與影片</li> 
                 <li onclick="showSection('approval')" class="captain-only auth-only">帳號審核</li>
             </ul>
+            <button type="button" class="sidebar-pin-btn sidebar-pin-btn--sidebar" id="sidebar-pin-btn-sidebar" onclick="toggleSidebarPin()" aria-pressed="false" title="釘選側邊欄">
+                <i class="fas fa-thumbtack"></i>
+            </button>
         </nav>
+        <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
         <main class="main-content">
             <header class="top-bar">
                 <div class="sidebar-toggle-wrapper">
                     <div class="sidebar-toggle" onclick="toggleSidebar()">
-                        <i class="fas fa-bars"></i>
+                        <span class="sidebar-toggle__bar"></span>
+                        <span class="sidebar-toggle__bar"></span>
+                        <span class="sidebar-toggle__bar"></span>
                     </div>
+                    
                     <div id="sidebar-toggle-hint" class="sidebar-toggle-hint" aria-hidden="true">
                         <span class="sidebar-toggle-hint__arrow">
                             <i class="fas fa-long-arrow-alt-left"></i>
@@ -227,7 +234,6 @@
                             <label class="court-weekday-option"><input type="checkbox" data-court-weekday="6" checked> 六</label>
                             <label class="court-weekday-option"><input type="checkbox" data-court-weekday="0" checked> 日</label>
                         </div>
-
                         <div class="tabs-container">
                             <button class="tab-btn active" id="tab-current" onclick="switchCourtTab('current')">
                                 本月（<span id="label-current-month"></span>）
@@ -266,9 +272,9 @@
                             <div class="strategy-month-controls">
                                 <label>
                                     <span>指定月份</span>
-                                    <input type="month" id="lottery-month-picker">
+                                    <input type="month" id="lottery-month-picker" placeholder="YYYY-MM" inputmode="numeric">
                                 </label>
-                                <button class="court-btn" onclick="loadSelectedLotteryMonth()">載入月份</button>
+                                <button class="court-btn" onclick="loadSelectedLotteryMonth(this)">載入月份</button>
                                 <button class="court-btn" id="lottery-edit-btn" onclick="toggleLotteryEditMode()">
                                     <i class="fas fa-edit"></i> 編輯投籤
                                 </button>
@@ -324,13 +330,13 @@
                             <div class="strategy-range-controls">
                                 <label>
                                     <span>開始月份</span>
-                                    <input type="month" id="probability-start-month">
+                                    <input type="month" id="probability-start-month" placeholder="YYYY-MM" inputmode="numeric">
                                 </label>
                                 <label>
                                     <span>結束月份</span>
-                                    <input type="month" id="probability-end-month">
+                                    <input type="month" id="probability-end-month" placeholder="YYYY-MM" inputmode="numeric">
                                 </label>
-                                <button class="court-btn" onclick="refreshLotteryDashboard()">重新分析</button>
+                                <button class="court-btn" onclick="refreshLotteryDashboard(this)">重新分析</button>
                             </div>
                         </div>
 
@@ -373,8 +379,28 @@
                                     <span>20-22 比 18-20 權重</span>
                                     <input type="number" id="strategy-weight-ratio" min="0.1" max="5" step="0.1" value="1.3">
                                 </label>
-                                <button class="court-btn" onclick="refreshStrategyPanel()">重新分析</button>
+                                <button class="court-btn" onclick="refreshStrategyPanel(this)">重新分析</button>
                                 <button class="court-btn" onclick="downloadStrategyTableAsPng()">下載 PNG</button>
+                            </div>
+                        </div>
+                        <div class="strategy-date-manager">
+                            <div class="strategy-date-manager__controls">
+                                <label class="strategy-date-manager__field">
+                                    <span>特定日期</span>
+                                    <input type="date" id="strategy-date-picker">
+                                </label>
+                                <button class="court-btn" type="button" onclick="addStrategyDate('include')">加入分析</button>
+                                <button class="court-btn" type="button" onclick="addStrategyDate('exclude')">排除日期</button>
+                            </div>
+                            <div class="strategy-date-manager__lists">
+                                <div class="strategy-date-manager__list">
+                                    <div class="strategy-date-manager__title">強制加入</div>
+                                    <div id="strategy-include-dates" class="strategy-date-tags"></div>
+                                </div>
+                                <div class="strategy-date-manager__list">
+                                    <div class="strategy-date-manager__title">強制排除</div>
+                                    <div id="strategy-exclude-dates" class="strategy-date-tags"></div>
+                                </div>
                             </div>
                         </div>
                         <div class="tabs-container">
@@ -724,7 +750,7 @@
             <div class="password-wrapper">
                 <input type="password" id="new-password" placeholder="新密碼">
             </div>
-            <button class="primary-btn full-width" onclick="submitChangePassword()">更新密碼</button>
+            <button class="primary-btn full-width" onclick="submitChangePassword(event)">更新密碼</button>
             <p id="cp-message" style="margin-top: 15px; font-weight: 500;"></p>
             <button onclick="closeChangePassword()" class="close-btn">取消</button>
         </div>
@@ -736,7 +762,7 @@
                 每次換行都會自動產生一個新項目，冒號前面的字會自動變粗體喔！
             </p>
             <textarea id="announcement-textarea" rows="8" style="width: 100%; padding: 12px; border: 1.5px solid #eee; border-radius: 8px; margin-bottom: 20px; font-family: inherit; resize: vertical;" placeholder="在這裡輸入公告內容..."></textarea>
-            <button class="primary-btn full-width" onclick="submitAnnouncements()">儲存變更</button>
+            <button class="primary-btn full-width" onclick="submitAnnouncements(event)">儲存變更</button>
             <button onclick="closeEditAnnouncement()" class="close-btn">取消</button>
         </div>
     </div>

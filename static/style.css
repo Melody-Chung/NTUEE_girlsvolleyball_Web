@@ -60,6 +60,11 @@ body {
 
 /* --- Sidebar --- */
 .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    overflow: hidden;
     width: var(--sidebar-width);
     min-width: var(--sidebar-width);
     background: linear-gradient(180deg, #2c3e50 0%, #1a252f 100%);
@@ -67,13 +72,34 @@ body {
     padding: 30px 15px;
     display: flex;
     flex-direction: column;
-    z-index: 100;
-    transition: margin-left 0.3s ease; 
+    z-index: 220;
+    box-shadow: 8px 0 10px rgba(8, 18, 26, 0.04);
+    transform: translateX(0);
+    transition: transform 0.3s ease; 
 }
 
 /* 隱藏側邊欄：利用負邊距讓側邊欄往左縮，不會影響到右邊的 main-content */
 .sidebar-toggled .sidebar {
-    margin-left: calc(-1 * var(--sidebar-width));
+    transform: translateX(calc(-1 * var(--sidebar-width) - 24px));
+}
+
+.sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(17, 27, 35, 0.28);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+    z-index: 180;
+}
+
+.app-container:not(.sidebar-toggled) .sidebar-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.app-container.sidebar-pinned .sidebar {
+    transform: translateX(0);
 }
 
 .menu-list { 
@@ -111,6 +137,19 @@ body {
     flex-direction: column;
     height: 100vh;      /* 新增：明確限制主內容區高度為視窗高度 */
     overflow: hidden;   /* 新增：防止整個網頁出現大捲軸 */
+}
+
+.app-container.sidebar-pinned .main-content {
+    margin-left: var(--sidebar-width);
+}
+
+.app-container.sidebar-pinned .sidebar-backdrop {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.main-content {
+    transition: margin-left 0.3s ease;
 }
 
 .content-wrapper {
@@ -157,24 +196,41 @@ body {
 }
 
 .sidebar-toggle {
-    font-size: 1.5rem;
-    color: var(--primary-color);
     cursor: pointer;
-    transition: color 0.2s;
     width: 60px; 
+    height: 44px;
     display: flex;
-    justify-content: flex-start; 
-    align-items: center;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 0 10px 0 0;
+    color: var(--primary-color);
+    transition: color 0.2s;
 }
 
 .sidebar-toggle:hover {
     color: var(--accent-color);
 }
 
+.sidebar-toggle__bar {
+    width: 28px;
+    height: 3px;
+    border-radius: 999px;
+    background: currentColor;
+    transform-origin: center;
+    transition: transform 0.25s ease, opacity 0.2s ease, width 0.25s ease;
+}
+
 .sidebar-toggle-wrapper {
-    position: relative;
+    position: fixed;
+    top: 16px;
+    left: 22px;
     display: flex;
     align-items: center;
+    gap: 10px;
+    z-index: 240;
+    transition: transform 0.3s ease;
 }
 
 .sidebar-toggle-hint {
@@ -200,6 +256,57 @@ body {
 .sidebar-toggle-hint.visible {
     opacity: 1;
     transform: translate(0, -50%);
+}
+
+.sidebar-pin-btn {
+    width: 38px;
+    height: 38px;
+    border: 1px solid rgba(44, 62, 80, 0.14);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+    color: #425766;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.sidebar-pin-btn--sidebar {
+    position: absolute;
+    left: 18px;
+    bottom: 18px;
+    z-index: 2;
+}
+
+.sidebar-pin-btn:hover {
+    transform: translateY(-1px);
+    color: var(--accent-color);
+    border-color: rgba(230, 126, 34, 0.35);
+}
+
+.sidebar-pin-btn.active {
+    background: var(--accent-color);
+    color: #ffffff;
+    border-color: var(--accent-color);
+}
+
+.app-container:not(.sidebar-toggled) .sidebar-pin-btn,
+.app-container.sidebar-pinned .sidebar-pin-btn {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.sidebar-toggle-wrapper .sidebar-pin-btn {
+    display: none;
+}
+
+.top-bar {
+    z-index: 90;
 }
 
 .sidebar-toggle-hint__arrow {
@@ -736,7 +843,8 @@ select:focus, input:focus {
     background: #f0f0f0; 
 }
 
-.custom-checkbox:has(input:checked) {
+.custom-checkbox:has(input:checked),
+.custom-checkbox.is-checked {
     background: var(--accent-color);
     border-color: var(--accent-color);
     color: white;
@@ -2769,6 +2877,33 @@ html, body, .app-container {
     transform: translateY(0); /* 按下去的沉入感 */
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
+.court-btn.is-loading,
+.primary-btn-sm.is-loading,
+.secondary-btn-sm.is-loading {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    pointer-events: none;
+    opacity: 0.9;
+}
+
+.btn-loading-spinner {
+    width: 1em;
+    height: 1em;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: button-loading-spin 0.75s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes button-loading-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .court-booked--yellow {
     background-color: #fff9db !important;
 }
@@ -2880,6 +3015,90 @@ html, body, .app-container {
 .strategy-filter-row .strategy-range-controls,
 .strategy-filter-row .strategy-weight-controls {
     margin-left: 0;
+}
+
+.strategy-date-manager {
+    display: grid;
+    gap: 14px;
+    margin: -2px 0 18px;
+}
+
+.strategy-date-manager__controls {
+    display: flex;
+    align-items: end;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.strategy-date-manager__field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: #5d6d7e;
+    font-weight: 700;
+}
+
+.strategy-date-manager__field input {
+    padding: 9px 10px;
+    border: 1px solid #d6dde5;
+    border-radius: 10px;
+    min-width: 160px;
+}
+
+.strategy-date-manager__lists {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.strategy-date-manager__list {
+    padding: 12px 14px;
+    border: 1px solid #d9e2ea;
+    border-radius: 14px;
+    background: #f8fbfd;
+}
+
+.strategy-date-manager__title {
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: #52616f;
+    margin-bottom: 10px;
+}
+
+.strategy-date-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 20px;
+}
+
+.strategy-date-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid #d5dee7;
+    background: #ffffff;
+    color: #32485a;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.strategy-date-tag button {
+    border: none;
+    background: transparent;
+    color: #6b7f90;
+    cursor: pointer;
+    font-size: 0.95rem;
+    line-height: 1;
+}
+
+.strategy-date-tag--exclude {
+    border-color: #ecd2d2;
+    background: #fff6f6;
+    color: #8f4e4e;
 }
 
 .strategy-month-history {
@@ -3102,6 +3321,10 @@ html, body, .app-container {
     .strategy-filter-row {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .strategy-date-manager__lists {
+        grid-template-columns: 1fr;
     }
 
     .lottery-edit-row {

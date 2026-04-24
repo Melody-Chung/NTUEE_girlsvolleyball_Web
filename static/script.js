@@ -5,6 +5,7 @@
 let sidebarHintTimer = null;
 const LAST_SECTION_KEY = 'vbt_last_section';
 const SIDEBAR_TOGGLED_KEY = 'vbt_sidebar_toggled';
+const SIDEBAR_PINNED_KEY = 'vbt_sidebar_pinned';
 
 document.addEventListener('DOMContentLoaded', () => {
     // 1. 取得目前的權限狀態
@@ -24,7 +25,96 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
         window.setTimeout(showSidebarToggleHint, 500);
     }
+
+    initializeCompatibilityFallbacks();
 });
+
+function getActionButton(trigger) {
+    if (trigger && trigger.currentTarget && trigger.currentTarget.tagName === 'BUTTON') return trigger.currentTarget;
+    if (trigger && trigger.target && trigger.target.tagName === 'BUTTON') return trigger.target;
+    if (document.activeElement && document.activeElement.tagName === 'BUTTON') return document.activeElement;
+    return null;
+}
+
+async function withButtonLoading(trigger, loadingText, task) {
+    const button = getActionButton(trigger);
+    const originalHtml = button ? button.innerHTML : '';
+
+    if (button) {
+        if (button.dataset.loading === 'true') return;
+        button.dataset.loading = 'true';
+        button.disabled = true;
+        button.classList.add('is-loading');
+        button.innerHTML = `<span class="btn-loading-spinner" aria-hidden="true"></span><span>${escapeHtml(loadingText)}</span>`;
+    }
+
+    try {
+        return await task();
+    } finally {
+        if (button) {
+            button.innerHTML = originalHtml;
+            button.disabled = false;
+            button.classList.remove('is-loading');
+            delete button.dataset.loading;
+        }
+    }
+}
+
+function normalizeMonthString(value) {
+    const normalized = String(value || '').trim();
+    return /^\d{4}-\d{2}$/.test(normalized) ? normalized : '';
+}
+
+function normalizeDateString(value) {
+    const normalized = String(value || '').trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : '';
+}
+
+function applyTextInputFallback(inputId, format) {
+    const input = document.getElementById(inputId);
+    if (!input || input.type === format) return;
+
+    input.placeholder = format === 'month' ? 'YYYY-MM' : 'YYYY-MM-DD';
+    input.inputMode = 'numeric';
+    input.autocomplete = 'off';
+    input.pattern = format === 'month' ? '\\d{4}-\\d{2}' : '\\d{4}-\\d{2}-\\d{2}';
+
+    input.addEventListener('blur', () => {
+        const normalized = format === 'month' ? normalizeMonthString(input.value) : normalizeDateString(input.value);
+        if (!input.value || normalized) return;
+        input.setCustomValidity(format === 'month' ? '請輸入 YYYY-MM' : '請輸入 YYYY-MM-DD');
+        input.reportValidity();
+    });
+
+    input.addEventListener('input', () => {
+        input.setCustomValidity('');
+    });
+}
+
+function syncCustomCheckboxState(root = document) {
+    root.querySelectorAll('.custom-checkbox').forEach((label) => {
+        const input = label.querySelector('input[type="checkbox"]');
+        if (!input) return;
+        label.classList.toggle('is-checked', input.checked);
+    });
+}
+
+function initializeCompatibilityFallbacks() {
+    ['lottery-month-picker', 'probability-start-month', 'probability-end-month'].forEach((id) => {
+        applyTextInputFallback(id, 'month');
+    });
+
+    ['config-start', 'config-end', 'strategy-date-picker'].forEach((id) => {
+        applyTextInputFallback(id, 'date');
+    });
+
+    syncCustomCheckboxState();
+    document.addEventListener('change', (event) => {
+        if (!event.target.matches('.custom-checkbox input[type="checkbox"]')) return;
+        const container = event.target.closest('.checkbox-grid') || document;
+        syncCustomCheckboxState(container);
+    });
+}
 
 // 🌟 核心函數：根據角色決定誰該出現、誰該消失
 function refreshUIByRole(role) {
@@ -50,21 +140,91 @@ function refreshUIByRole(role) {
 
 function toggleSidebar() {
     const mainApp = document.getElementById('main-app');
+    if (!mainApp) return;
+    if (mainApp.classList.contains('sidebar-pinned')) {
+        closeSidebar();
+        syncSidebarPinButton();
+        return;
+    }
     mainApp.classList.toggle('sidebar-toggled');
     sessionStorage.setItem(SIDEBAR_TOGGLED_KEY, String(mainApp.classList.contains('sidebar-toggled')));
     hideSidebarToggleHint();
+    syncSidebarPinButton();
+    updateShowcaseCropGuide();
+}
+
+function openSidebar() {
+    const mainApp = document.getElementById('main-app');
+    if (!mainApp || !mainApp.classList.contains('sidebar-toggled')) return;
+    mainApp.classList.remove('sidebar-toggled');
+    sessionStorage.setItem(SIDEBAR_TOGGLED_KEY, 'false');
+    hideSidebarToggleHint();
+    syncSidebarPinButton();
+    updateShowcaseCropGuide();
+}
+
+function closeSidebar() {
+    const mainApp = document.getElementById('main-app');
+    if (!mainApp || mainApp.classList.contains('sidebar-toggled')) return;
+    if (mainApp.classList.contains('sidebar-pinned')) {
+        mainApp.classList.remove('sidebar-pinned');
+        localStorage.setItem(SIDEBAR_PINNED_KEY, 'false');
+    }
+    mainApp.classList.add('sidebar-toggled');
+    sessionStorage.setItem(SIDEBAR_TOGGLED_KEY, 'true');
+    hideSidebarToggleHint();
+    syncSidebarPinButton();
     updateShowcaseCropGuide();
 }
 
 function applySavedSidebarState() {
     const mainApp = document.getElementById('main-app');
     if (!mainApp) return;
+    const pinnedValue = localStorage.getItem(SIDEBAR_PINNED_KEY);
+    const isPinned = pinnedValue === 'true';
+    mainApp.classList.toggle('sidebar-pinned', isPinned);
     const savedValue = sessionStorage.getItem(SIDEBAR_TOGGLED_KEY);
+    if (isPinned) {
+        mainApp.classList.remove('sidebar-toggled');
+        syncSidebarPinButton();
+        return;
+    }
     if (savedValue === null) {
         mainApp.classList.add('sidebar-toggled'); // 無紀錄時預設收合
         return;
     }
     mainApp.classList.toggle('sidebar-toggled', savedValue === 'true');
+    syncSidebarPinButton();
+}
+
+function toggleSidebarPin() {
+    const mainApp = document.getElementById('main-app');
+    if (!mainApp) return;
+
+    const shouldPin = !mainApp.classList.contains('sidebar-pinned');
+    mainApp.classList.toggle('sidebar-pinned', shouldPin);
+    localStorage.setItem(SIDEBAR_PINNED_KEY, String(shouldPin));
+
+    if (shouldPin) {
+        mainApp.classList.remove('sidebar-toggled');
+        sessionStorage.setItem(SIDEBAR_TOGGLED_KEY, 'false');
+    }
+
+    syncSidebarPinButton();
+    updateShowcaseCropGuide();
+}
+
+function syncSidebarPinButton() {
+    const mainApp = document.getElementById('main-app');
+    const pinButtons = document.querySelectorAll('.sidebar-pin-btn');
+    if (!mainApp || pinButtons.length === 0) return;
+
+    const isPinned = mainApp.classList.contains('sidebar-pinned');
+    pinButtons.forEach((pinButton) => {
+        pinButton.classList.toggle('active', isPinned);
+        pinButton.setAttribute('aria-pressed', String(isPinned));
+        pinButton.title = isPinned ? '取消釘選側邊欄' : '釘選側邊欄';
+    });
 }
 
 function canAccessSection(sectionId, role) {
@@ -136,11 +296,11 @@ function showSection(sectionId) {
         activeItem.classList.add('active');
     }
 
-    // Close sidebar on mobile after clicking a link
-    const sidebar = document.querySelector('.sidebar');
-    if (sidebar && sidebar.classList.contains('active')) {
-        sidebar.classList.remove('active');
+    const mainApp = document.getElementById('main-app');
+    if (mainApp && !mainApp.classList.contains('sidebar-pinned')) {
+        closeSidebar();
     }
+
 }
 
 function toggleSidebarMobile() {
@@ -1616,6 +1776,7 @@ function setMenuFilterChecked(name, checked) {
     document.querySelectorAll(`input[name="${name}"]`).forEach((input) => {
         input.checked = checked;
     });
+    syncCustomCheckboxState();
 }
 
 function selectAllMenuFilters() {
@@ -3035,45 +3196,34 @@ async function executeScraper(buttonEl) {
     const swapOut = swapOutRaw ? swapOutRaw.split(',').map(s => s.trim()) : [];
 
     if (!startDate || !endDate) {
-        alert('請選擇開始與結束日期。');
+        alert('\u8acb\u5148\u8a2d\u5b9a\u958b\u59cb\u8207\u7d50\u675f\u65e5\u671f\u3002');
         return;
     }
 
-    if (!confirm(`確定要執行 ${startDate} 到 ${endDate} 的爬蟲嗎？`)) return;
+    if (!confirm(`\u78ba\u5b9a\u8981\u57f7\u884c ${startDate} \u5230 ${endDate} \u7684\u722c\u87f2\u55ce\uff1f`)) return;
 
-    const btn = buttonEl && buttonEl.tagName === 'BUTTON' ? buttonEl : null;
-    const labelEl = btn ? btn.querySelector('.scraper-btn-label') : null;
-    const originalText = labelEl ? labelEl.innerText : '執行爬蟲';
-    if (btn) {
-        if (labelEl) labelEl.innerText = '爬取中';
-        btn.disabled = true;
-    }
+    await withButtonLoading(buttonEl, '\u722c\u53d6\u4e2d', async () => {
+        try {
+            const response = await fetch('/api/trigger_scrape', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    month_id: monthId,
+                    start_date: startDate,
+                    end_date: endDate,
+                    ignore_reservation: ignoreRes,
+                    swap_in: swapIn,
+                    swap_out: swapOut
+                })
+            });
 
-    try {
-        const response = await fetch('/api/trigger_scrape', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                month_id: monthId,
-                start_date: startDate,
-                end_date: endDate,
-                ignore_reservation: ignoreRes,
-                swap_in: swapIn,
-                swap_out: swapOut
-            })
-        });
-
-        await response.json();
-        await pollScrapeStatus(monthId);
-    } catch (error) {
-        console.error('Error triggering scraper', error);
-        alert('爬蟲執行失敗，請檢查主控台。');
-    } finally {
-        if (btn) {
-            if (labelEl) labelEl.innerText = originalText;
-            btn.disabled = false;
+            await response.json();
+            await pollScrapeStatus(monthId);
+        } catch (error) {
+            console.error('Error triggering scraper', error);
+            alert('\u57f7\u884c\u722c\u87f2\u5931\u6557\uff0c\u8acb\u7a0d\u5f8c\u518d\u8a66\u3002');
         }
-    }
+    });
 }
 
 async function pollScrapeStatus(targetMonth, maxAttempts = 20) {
@@ -3134,6 +3284,8 @@ const PROBABILITY_WEEKDAY_KEY = 'vbt_probability_weekdays';
 const STRATEGY_WEEKDAY_KEY = 'vbt_strategy_weekdays';
 const PROBABILITY_COURT_KEY = 'vbt_probability_courts';
 const STRATEGY_COURT_KEY = 'vbt_strategy_courts';
+const STRATEGY_INCLUDE_DATES_KEY = 'vbt_strategy_include_dates';
+const STRATEGY_EXCLUDE_DATES_KEY = 'vbt_strategy_exclude_dates';
 const LOTTERY_COURTS = ['Court 4', 'Court 5', 'Court 6', 'Court 7'];
 const LOTTERY_WEEKDAY_NAMES = ['一', '二', '三', '四', '五', '六', '日'];
 const lotteryBidsCache = {};
@@ -3229,6 +3381,81 @@ function getSelectedStrategyCourts() {
     return getStoredCheckboxValues('[data-strategy-court]', STRATEGY_COURT_KEY, LOTTERY_COURTS, (checkbox) => checkbox.dataset.strategyCourt);
 }
 
+function readStoredDateList(storageKey) {
+    try {
+        const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        if (!Array.isArray(saved)) return [];
+        return saved
+            .map((value) => normalizeCourtDateValue(value))
+            .filter(Boolean)
+            .filter((value, index, array) => array.indexOf(value) === index)
+            .sort();
+    } catch (error) {
+        console.warn(`Failed to read ${storageKey}`, error);
+        return [];
+    }
+}
+
+function getStrategyIncludedDates() {
+    return readStoredDateList(STRATEGY_INCLUDE_DATES_KEY);
+}
+
+function getStrategyExcludedDates() {
+    return readStoredDateList(STRATEGY_EXCLUDE_DATES_KEY);
+}
+
+function saveStrategyDateList(storageKey, values) {
+    localStorage.setItem(storageKey, JSON.stringify(values));
+}
+
+function renderStrategyDateTags(containerId, values, mode) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (!Array.isArray(values) || values.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML = values.map((dateValue) => `
+        <span class="strategy-date-tag${mode === 'exclude' ? ' strategy-date-tag--exclude' : ''}">
+            <span>${escapeHtml(dateValue)}</span>
+            <button type="button" onclick="removeStrategyDate('${mode}', '${dateValue}')">&times;</button>
+        </span>
+    `).join('');
+}
+
+function renderStrategyDateFilters() {
+    renderStrategyDateTags('strategy-include-dates', getStrategyIncludedDates(), 'include');
+    renderStrategyDateTags('strategy-exclude-dates', getStrategyExcludedDates(), 'exclude');
+}
+
+function addStrategyDate(mode) {
+    const picker = document.getElementById('strategy-date-picker');
+    const normalizedDate = normalizeCourtDateValue(picker ? picker.value : '');
+    if (!normalizedDate) {
+        alert('請先選擇日期。');
+        return;
+    }
+
+    const targetKey = mode === 'exclude' ? STRATEGY_EXCLUDE_DATES_KEY : STRATEGY_INCLUDE_DATES_KEY;
+    const otherKey = mode === 'exclude' ? STRATEGY_INCLUDE_DATES_KEY : STRATEGY_EXCLUDE_DATES_KEY;
+    const nextValues = Array.from(new Set([...readStoredDateList(targetKey), normalizedDate])).sort();
+    const nextOtherValues = readStoredDateList(otherKey).filter((value) => value !== normalizedDate);
+
+    saveStrategyDateList(targetKey, nextValues);
+    saveStrategyDateList(otherKey, nextOtherValues);
+    renderStrategyDateFilters();
+    loadLotteryDashboard();
+}
+
+function removeStrategyDate(mode, dateValue) {
+    const storageKey = mode === 'exclude' ? STRATEGY_EXCLUDE_DATES_KEY : STRATEGY_INCLUDE_DATES_KEY;
+    const nextValues = readStoredDateList(storageKey).filter((value) => value !== dateValue);
+    saveStrategyDateList(storageKey, nextValues);
+    renderStrategyDateFilters();
+    loadLotteryDashboard();
+}
+
 function lotteryWeekdayIndex(dateValue) {
     const jsDay = new Date(`${dateValue}T00:00:00`).getDay();
     return (jsDay + 6) % 7;
@@ -3243,6 +3470,7 @@ function initLotteryWeekdayFilters() {
     initCheckboxFilter('[data-strategy-weekday]', STRATEGY_WEEKDAY_KEY, getDefaultStrategyWeekdays(), (checkbox) => Number(checkbox.dataset.strategyWeekday), loadLotteryDashboard);
     initCheckboxFilter('[data-probability-court]', PROBABILITY_COURT_KEY, LOTTERY_COURTS, (checkbox) => checkbox.dataset.probabilityCourt, loadLotteryDashboard);
     initCheckboxFilter('[data-strategy-court]', STRATEGY_COURT_KEY, LOTTERY_COURTS, (checkbox) => checkbox.dataset.strategyCourt, loadLotteryDashboard);
+    renderStrategyDateFilters();
 }
 
 function normalizeLotterySlot(slotData) {
@@ -3524,12 +3752,14 @@ function switchLotteryTab(tabType) {
     loadLotteryDashboard();
 }
 
-async function loadSelectedLotteryMonth() {
-    const picker = document.getElementById('lottery-month-picker');
-    lotterySelectedMonthId = picker && picker.value ? picker.value : getMonthData(0).id;
-    updateLotteryMonthLabels();
-    await fetchAndDisplayLotteryBids(lotterySelectedMonthId, 'lottery-display-selected');
-    switchLotteryTab('selected');
+async function loadSelectedLotteryMonth(trigger) {
+    await withButtonLoading(trigger, '\u8f09\u5165\u4e2d', async () => {
+        const picker = document.getElementById('lottery-month-picker');
+        lotterySelectedMonthId = picker && picker.value ? picker.value : getMonthData(0).id;
+        updateLotteryMonthLabels();
+        await fetchAndDisplayLotteryBids(lotterySelectedMonthId, 'lottery-display-selected');
+        switchLotteryTab('selected');
+    });
 }
 
 function toggleLotteryEditMode(forceState) {
@@ -3773,12 +4003,19 @@ function renderStrategyTable(rows, summaryLabel, selectedCourts) {
     return html;
 }
 
-function refreshLotteryDashboard() {
-    loadLotteryDashboard();
+function buildStrategySummary(baseLabel, includedDates, excludedDates) {
+    const parts = [baseLabel];
+    if (includedDates.length > 0) parts.push(`加入 ${includedDates.join(', ')}`);
+    if (excludedDates.length > 0) parts.push(`排除 ${excludedDates.join(', ')}`);
+    return parts.join(' ｜ ');
 }
 
-function refreshStrategyPanel() {
-    loadLotteryDashboard();
+function refreshLotteryDashboard(trigger) {
+    return withButtonLoading(trigger, '\u5206\u6790\u4e2d', () => loadLotteryDashboard());
+}
+
+function refreshStrategyPanel(trigger) {
+    return withButtonLoading(trigger, '\u5206\u6790\u4e2d', () => loadLotteryDashboard());
 }
 
 function getStrategyWeights() {
@@ -3809,6 +4046,8 @@ async function loadLotteryDashboard() {
     const strategyWeekdays = getSelectedStrategyWeekdays();
     const probabilityCourts = getSelectedProbabilityCourts();
     const strategyCourts = getSelectedStrategyCourts();
+    const strategyIncludedDates = getStrategyIncludedDates();
+    const strategyExcludedDates = getStrategyExcludedDates();
     const strategyWeights = getStrategyWeights();
 
     const params = new URLSearchParams({
@@ -3818,6 +4057,8 @@ async function loadLotteryDashboard() {
         strategy_weight_ratio: String(strategyWeights.late),
     });
     strategyWeekdays.forEach((weekday) => params.append('strategy_weekday', String(weekday)));
+    strategyIncludedDates.forEach((dateValue) => params.append('strategy_include_date', dateValue));
+    strategyExcludedDates.forEach((dateValue) => params.append('strategy_exclude_date', dateValue));
 
     try {
         const response = await fetch(`/api/lottery_dashboard?${params.toString()}`);
@@ -3901,7 +4142,7 @@ function closeChangePassword() {
     document.getElementById('change-password-overlay').style.setProperty('display', 'none', 'important');
 }
 
-async function submitChangePassword() {
+async function submitChangePassword(trigger) {
     const oldPassword = document.getElementById('old-password').value;
     const newPassword = document.getElementById('new-password').value;
     const messageEl = document.getElementById('cp-message');
@@ -3916,10 +4157,12 @@ async function submitChangePassword() {
     }
 
     // 按鈕顯示讀取中
-    const btn = event.target;
-    const originalText = btn.innerText;
-    btn.innerText = '更新中...';
-    btn.disabled = true;
+    const btn = getActionButton(trigger);
+    const originalText = btn ? btn.innerText : '';
+    if (btn) {
+        btn.innerText = '更新中...';
+        btn.disabled = true;
+    }
 
     try {
         const response = await fetch('/api/change_password', {
@@ -3945,8 +4188,10 @@ async function submitChangePassword() {
         messageEl.style.color = '#ff4757';
         messageEl.innerText = '伺服器連線失敗。';
     } finally {
-        btn.innerText = originalText;
-        btn.disabled = false;
+        if (btn) {
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
     }
 }
 // ==========================================
@@ -4031,12 +4276,14 @@ function closeEditAnnouncement() {
     document.getElementById('edit-announcement-overlay').style.setProperty('display', 'none', 'important');
 }
 
-async function submitAnnouncements() {
+async function submitAnnouncements(trigger) {
     const newContent = document.getElementById('announcement-textarea').value;
-    const btn = event.target;
-    const originalText = btn.innerText;
-    btn.innerText = '儲存中...';
-    btn.disabled = true;
+    const btn = getActionButton(trigger);
+    const originalText = btn ? btn.innerText : '';
+    if (btn) {
+        btn.innerText = '儲存中...';
+        btn.disabled = true;
+    }
 
     try {
         const response = await fetch('/api/announcements', {
@@ -4055,8 +4302,10 @@ async function submitAnnouncements() {
         console.error('Error:', error);
         alert('伺服器連線失敗。');
     } finally {
-        btn.innerText = originalText;
-        btn.disabled = false;
+        if (btn) {
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
     }
 }
 // ==========================================

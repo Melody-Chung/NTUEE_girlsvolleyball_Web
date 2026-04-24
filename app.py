@@ -756,13 +756,15 @@ def summarize_probability_records(records):
     return results
 
 
-def build_strategy_rows(target_month, probability_stats, weekdays=None, time_weights=None):
+def build_strategy_rows(target_month, probability_stats, weekdays=None, time_weights=None, include_dates=None, exclude_dates=None):
     month_id = normalize_month_id(target_month)
     if not month_id:
         return []
 
     selected_weekdays = weekdays or [1, 3]
     time_weights = time_weights or {"18:00-20:00": 1.0, "20:00-22:00": 1.0}
+    included_date_set = {normalize_court_date_value(value) for value in (include_dates or []) if normalize_court_date_value(value)}
+    excluded_date_set = {normalize_court_date_value(value) for value in (exclude_dates or []) if normalize_court_date_value(value)}
     stat_map = {(item["weekday"], item["time"], item["court"]): item for item in probability_stats}
     year, month = map(int, month_id.split("-"))
     last_day = calendar.monthrange(year, month)[1]
@@ -772,10 +774,12 @@ def build_strategy_rows(target_month, probability_stats, weekdays=None, time_wei
     for day in range(1, last_day + 1):
         date_obj = date(year, month, day)
         weekday_num = date_obj.weekday()
-        if weekday_num not in selected_weekdays:
+        date_key = f"{year}-{month:02d}-{day:02d}"
+        if date_key in excluded_date_set:
+            continue
+        if weekday_num not in selected_weekdays and date_key not in included_date_set:
             continue
         weekday_name = LOTTERY_WEEKDAY_NAMES[weekday_num]
-        date_key = f"{year}-{month:02d}-{day:02d}"
 
         for time_label in LOTTERY_TIMES.values():
             slot = {
@@ -1446,6 +1450,10 @@ def get_lottery_dashboard():
     target_month = normalize_month_id(request.args.get("target_month")) or get_month_id(0)
     strategy_weekday_values = request.args.getlist("strategy_weekday")
     strategy_weekdays = [int(value) for value in strategy_weekday_values if str(value).isdigit()]
+    strategy_include_dates = [normalize_court_date_value(value) for value in request.args.getlist("strategy_include_date")]
+    strategy_exclude_dates = [normalize_court_date_value(value) for value in request.args.getlist("strategy_exclude_date")]
+    strategy_include_dates = [value for value in strategy_include_dates if value]
+    strategy_exclude_dates = [value for value in strategy_exclude_dates if value]
     try:
         late_ratio = float(request.args.get("strategy_weight_ratio", 1.3))
     except (TypeError, ValueError):
@@ -1468,8 +1476,22 @@ def get_lottery_dashboard():
     all_records, all_skipped = build_probability_records(history_month_ids)
     all_stats = summarize_probability_records(all_records)
 
-    selected_strategy_rows = build_strategy_rows(target_month, selected_stats, strategy_weekdays, strategy_time_weights)
-    all_time_strategy_rows = build_strategy_rows(target_month, all_stats, strategy_weekdays, strategy_time_weights)
+    selected_strategy_rows = build_strategy_rows(
+        target_month,
+        selected_stats,
+        strategy_weekdays,
+        strategy_time_weights,
+        strategy_include_dates,
+        strategy_exclude_dates,
+    )
+    all_time_strategy_rows = build_strategy_rows(
+        target_month,
+        all_stats,
+        strategy_weekdays,
+        strategy_time_weights,
+        strategy_include_dates,
+        strategy_exclude_dates,
+    )
 
     return jsonify(
         {
