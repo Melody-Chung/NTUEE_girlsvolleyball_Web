@@ -23,10 +23,24 @@ html, body {
 :root {
     --primary-color: #2c3e50;
     --accent-color: #e67e22;
+    --accent-highlight: #f0a24b;
+    --accent-soft-bg: rgba(230, 126, 34, 0.12);
+    --accent-soft-text: #b96a1c;
+    --interactive-color: #2980b9;
+    --interactive-soft: rgba(41, 128, 185, 0.12);
+    --interactive-strong: #3f86b8;
+    --resource-doc-start: #2563eb;
+    --resource-doc-end: #1d4ed8;
+    --resource-sheet-start: #16a34a;
+    --resource-sheet-end: #15803d;
+    --danger-color: #e74c3c;
+    --danger-color-strong: #c0392b;
     --bg-color: #f0f2f5;
     --card-bg: #ffffff;
     --text-main: #2d3436;
     --text-muted: #636e72;
+    --sidebar-start: #2c3e50;
+    --sidebar-end: #1a252f;
     --border-radius: 16px;
     --shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
     --sidebar-width: 280px;
@@ -72,7 +86,7 @@ body.dragging-menu-item {
     overflow: hidden;
     width: var(--sidebar-width);
     min-width: var(--sidebar-width);
-    background: linear-gradient(180deg, #2c3e50 0%, #1a252f 100%);
+    background: linear-gradient(180deg, var(--sidebar-start) 0%, var(--sidebar-end) 100%);
     color: white;
     padding: 30px 15px;
     display: flex;
@@ -263,7 +277,8 @@ body.dragging-menu-item {
     transform: translate(0, -50%);
 }
 
-.sidebar-pin-btn {
+.sidebar-pin-btn,
+.sidebar-theme-toggle {
     width: 38px;
     height: 38px;
     border: 1px solid rgba(44, 62, 80, 0.14);
@@ -280,33 +295,103 @@ body.dragging-menu-item {
     pointer-events: none;
 }
 
-.sidebar-pin-btn--sidebar {
+.sidebar-tools {
     position: absolute;
     left: 18px;
     bottom: 18px;
-    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 3;
 }
 
-.sidebar-pin-btn:hover {
+.sidebar-pin-btn--sidebar {
+    position: static;
+}
+
+.sidebar-pin-btn:hover,
+.sidebar-theme-toggle:hover {
     transform: translateY(-1px);
     color: var(--accent-color);
     border-color: rgba(230, 126, 34, 0.35);
 }
 
-.sidebar-pin-btn.active {
+.sidebar-pin-btn.active,
+.sidebar-theme-toggle.active {
     background: var(--accent-color);
     color: #ffffff;
     border-color: var(--accent-color);
 }
 
+.sidebar-theme-panel {
+    position: absolute;
+    left: 0;
+    bottom: 52px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(213, 224, 232, 0.92);
+    box-shadow: 0 14px 32px rgba(12, 24, 33, 0.16);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(8px);
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+}
+
+.sidebar-tools.theme-open .sidebar-theme-panel {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+.sidebar-theme-option {
+    position: relative;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, 0.95);
+    background: var(--theme-primary);
+    box-shadow: 0 0 0 1px rgba(38, 54, 66, 0.16);
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sidebar-theme-option::after {
+    content: '';
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--theme-accent);
+    border: 2px solid rgba(255, 255, 255, 0.92);
+}
+
+.sidebar-theme-option:hover {
+    transform: translateY(-1px) scale(1.04);
+}
+
+.sidebar-theme-option.active {
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.96), 0 0 0 5px var(--accent-color);
+}
+
 .app-container:not(.sidebar-toggled) .sidebar-pin-btn,
-.app-container.sidebar-pinned .sidebar-pin-btn {
+.app-container:not(.sidebar-toggled) .sidebar-theme-toggle,
+.app-container.sidebar-pinned .sidebar-pin-btn,
+.app-container.sidebar-pinned .sidebar-theme-toggle {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
 }
 
-.sidebar-toggle-wrapper .sidebar-pin-btn {
+.sidebar-toggle-wrapper .sidebar-pin-btn,
+.sidebar-toggle-wrapper .sidebar-theme-toggle {
     display: none;
 }
 
@@ -372,7 +457,7 @@ body.dragging-menu-item {
 }
 
 #app-title:focus-visible {
-    outline: 2px solid rgba(230, 126, 34, 0.55);
+    outline: 2px solid color-mix(in srgb, var(--accent-color) 55%, transparent);
     outline-offset: 6px;
     border-radius: 10px;
 }
@@ -390,7 +475,7 @@ body.dragging-menu-item {
     line-height: 1.8;
     margin: 0;
     padding-left: 18px;
-    color: #314656;
+    color: color-mix(in srgb, var(--primary-color) 88%, white);
 }
 
 /* 順便優化：最後一項不要有多餘的底部間距 */
@@ -406,12 +491,12 @@ body.dragging-menu-item {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #f0a24b 0%, var(--accent-color) 100%);
-    box-shadow: 0 0 0 4px rgba(230, 126, 34, 0.12);
+    background: linear-gradient(135deg, var(--accent-highlight) 0%, var(--accent-color) 100%);
+    box-shadow: 0 0 0 4px var(--accent-soft-bg);
 }
 
 .announcement-item strong {
-    color: #1f3446;
+    color: var(--primary-color);
 }
 
 .announcement-card::before {
@@ -422,7 +507,7 @@ body.dragging-menu-item {
     bottom: 20px;
     width: 6px;
     border-radius: 999px;
-    background: linear-gradient(180deg, #f1a24b 0%, var(--accent-color) 100%);
+    background: linear-gradient(180deg, var(--accent-highlight) 0%, var(--accent-color) 100%);
 }
 
 .announcement-card__header {
@@ -445,8 +530,8 @@ body.dragging-menu-item {
     width: fit-content;
     padding: 5px 10px;
     border-radius: 999px;
-    background: rgba(230, 126, 34, 0.12);
-    color: #b96a1c;
+    background: var(--accent-soft-bg);
+    color: var(--accent-soft-text);
     font-size: 0.76rem;
     font-weight: 800;
     letter-spacing: 0.08em;
@@ -455,13 +540,13 @@ body.dragging-menu-item {
 
 .announcement-card__copy h3 {
     margin: 0;
-    color: #203444;
+    color: var(--primary-color);
     font-size: 1.45rem;
 }
 
 .announcement-card__copy p {
     margin: 0;
-    color: #6b7c8a;
+    color: var(--text-muted);
     line-height: 1.6;
 }
 
@@ -482,7 +567,7 @@ body.dragging-menu-item {
 
 .announcement-card__body > p {
     margin: 0;
-    color: #7d8b97;
+    color: var(--text-muted);
 }
 
 .announcement-list {
@@ -495,7 +580,7 @@ body.dragging-menu-item {
 
 .announcement-empty {
     margin: 0;
-    color: #7d8b97;
+    color: var(--text-muted);
 }
 
 /* ==========================================================================
@@ -510,7 +595,7 @@ body.dragging-menu-item {
 }
 
 #display-name {
-    color: #2c3e50;   
+    color: var(--primary-color);   
     font-weight: 500;
     font-size: 0.95rem;
 }
@@ -521,16 +606,16 @@ body.dragging-menu-item {
     font-weight: 700;
     padding: 4px 10px;
     border-radius: 20px;
-    background: #e9ecef;
-    color: #495057;
+    background: color-mix(in srgb, var(--primary-color) 10%, white);
+    color: color-mix(in srgb, var(--primary-color) 82%, black);
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 
 .role-badge.captain {
-    background: #fff3e0;
+    background: var(--accent-soft-bg);
     color: var(--accent-color);
-    border: 1px solid #ffe0b2;
+    border: 1px solid color-mix(in srgb, var(--accent-color) 25%, white);
 }
 
 /* --- Avatar --- */
@@ -730,6 +815,148 @@ body.dragging-menu-item {
         radial-gradient(circle at top right, rgba(230, 126, 34, 0.14), transparent 34%),
         linear-gradient(135deg, #fffaf4 0%, #fffdf9 52%, #ffffff 100%);
     box-shadow: 0 18px 38px rgba(210, 127, 49, 0.08);
+}
+
+html[data-theme-mode="dark"] body {
+    background-color: var(--bg-color);
+    color: var(--text-main);
+}
+
+html[data-theme-mode="dark"] .content-wrapper,
+html[data-theme-mode="dark"] .main-content {
+    background: var(--bg-color);
+}
+
+html[data-theme-mode="dark"] .top-bar,
+html[data-theme-mode="dark"] .app-footer {
+    background: rgba(26, 29, 35, 0.9) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: var(--text-main);
+}
+
+html[data-theme-mode="dark"] .card,
+html[data-theme-mode="dark"] .video-card,
+html[data-theme-mode="dark"] .video-section-card,
+html[data-theme-mode="dark"] .announcement-card__body,
+html[data-theme-mode="dark"] .avatar-dropdown-menu,
+html[data-theme-mode="dark"] .login-card,
+html[data-theme-mode="dark"] .modal-content,
+html[data-theme-mode="dark"] .showcase-crop-modal__dialog,
+html[data-theme-mode="dark"] .video-notes-modal__dialog {
+    background: var(--card-bg);
+    color: var(--text-main);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: none;
+}
+
+html[data-theme-mode="dark"] .announcement-card {
+    border-color: rgba(56, 189, 248, 0.16);
+    background:
+        radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 34%),
+        linear-gradient(135deg, #20242b 0%, #1d2127 52%, #1a1d23 100%);
+    box-shadow: none;
+}
+
+html[data-theme-mode="dark"] .video-preview,
+html[data-theme-mode="dark"] .video-control-input,
+html[data-theme-mode="dark"] .avatar-dropdown-menu::before,
+html[data-theme-mode="dark"] .video-section-card__meta,
+html[data-theme-mode="dark"] .video-section-card__icon-btn,
+html[data-theme-mode="dark"] .section-reorder-handle,
+html[data-theme-mode="dark"] .resource-visibility-chip,
+html[data-theme-mode="dark"] .video-section-card__delete,
+html[data-theme-mode="dark"] .menu-source-item,
+html[data-theme-mode="dark"] .menu-drop-zone__item,
+html[data-theme-mode="dark"] .practice-menu-item,
+html[data-theme-mode="dark"] .menu-builder-half,
+html[data-theme-mode="dark"] .menu-drop-zone,
+html[data-theme-mode="dark"] .menu-editor-item,
+html[data-theme-mode="dark"] .court-weekday-option,
+html[data-theme-mode="dark"] .lottery-slot-line {
+    background: #2a2e36;
+    color: var(--text-main);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme-mode="dark"] .video-control-input,
+html[data-theme-mode="dark"] input,
+html[data-theme-mode="dark"] select,
+html[data-theme-mode="dark"] textarea {
+    background: #262a31;
+    color: var(--text-main);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+html[data-theme-mode="dark"] .video-info p,
+html[data-theme-mode="dark"] .announcement-card__copy p,
+html[data-theme-mode="dark"] .announcement-card__body > p,
+html[data-theme-mode="dark"] .announcement-empty,
+html[data-theme-mode="dark"] .video-section-card__empty,
+html[data-theme-mode="dark"] .menu-source-item__meta,
+html[data-theme-mode="dark"] .strategy-summary,
+html[data-theme-mode="dark"] .strategy-note,
+html[data-theme-mode="dark"] .probability-cell small {
+    color: var(--text-muted);
+}
+
+html[data-theme-mode="dark"] .dropdown-item:hover,
+html[data-theme-mode="dark"] .video-section-card__icon-btn:hover,
+html[data-theme-mode="dark"] .section-reorder-handle:hover,
+html[data-theme-mode="dark"] .video-section-card__delete:hover {
+    background: #313641;
+}
+
+html[data-theme-mode="dark"] .announcement-card__body {
+    background: rgba(35, 38, 45, 0.92);
+    backdrop-filter: blur(8px);
+}
+
+html[data-theme-mode="dark"] .announcement-card__copy h3,
+html[data-theme-mode="dark"] .video-info h5,
+html[data-theme-mode="dark"] .video-section-card__title h4,
+html[data-theme-mode="dark"] .section-title,
+html[data-theme-mode="dark"] #display-name {
+    color: var(--text-main);
+}
+
+html[data-theme-mode="dark"] #app-title {
+    color: var(--text-main);
+    text-shadow: none;
+}
+
+html[data-theme-mode="dark"] .sidebar-toggle {
+    color: var(--text-main);
+}
+
+html[data-theme-mode="dark"] .role-badge {
+    background: rgba(170, 180, 195, 0.12);
+    color: var(--text-main);
+}
+
+html[data-theme-mode="dark"] .role-badge.captain {
+    background: rgba(56, 189, 248, 0.14);
+    color: #8edcff;
+    border-color: rgba(56, 189, 248, 0.24);
+}
+
+html[data-theme-mode="dark"] .gallery-img,
+html[data-theme-mode="dark"] .showcase-slide img,
+html[data-theme-mode="dark"] img:not(.avatar img) {
+    filter: brightness(0.8) contrast(1.08);
+}
+
+html[data-theme-mode="dark"] .primary-btn {
+    background: #334155;
+    color: #eef2f7;
+}
+
+html[data-theme-mode="dark"] .primary-btn:hover {
+    background: #3f4f63;
+    box-shadow: none;
+}
+
+html[data-theme-mode="dark"] .primary-btn-sm {
+    color: #eef2f7;
 }
 
 /* --- Buttons --- */
@@ -1162,9 +1389,9 @@ select:focus, input:focus {
 }
 
 .menu-editor-item.active {
-    border-color: #2980b9;
+    border-color: var(--interactive-color);
     background: #f3f9fe;
-    box-shadow: 0 6px 14px rgba(41, 128, 185, 0.12);
+    box-shadow: 0 6px 14px var(--interactive-soft);
 }
 
 .practice-menu-board {
@@ -1286,8 +1513,8 @@ select:focus, input:focus {
 
 .menu-builder-toggle:hover {
     transform: translateY(-1px);
-    border-color: rgba(52, 128, 185, 0.38);
-    color: #2980b9;
+    border-color: color-mix(in srgb, var(--interactive-color) 38%, transparent);
+    color: var(--interactive-color);
     box-shadow: 0 8px 20px rgba(36, 64, 92, 0.08);
 }
 
@@ -1475,8 +1702,8 @@ select:focus, input:focus {
     right: 10px;
     height: 3px;
     border-radius: 999px;
-    background: #3f86b8;
-    box-shadow: 0 0 0 2px rgba(63, 134, 184, 0.15);
+    background: var(--interactive-strong);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-strong) 15%, transparent);
 }
 
 .menu-drop-zone__item.drop-before::before {
@@ -1488,8 +1715,8 @@ select:focus, input:focus {
 }
 
 .menu-drop-zone.is-drop-target-empty {
-    border-color: #3f86b8;
-    box-shadow: inset 0 0 0 2px rgba(63, 134, 184, 0.15);
+    border-color: var(--interactive-strong);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--interactive-strong) 15%, transparent);
 }
 
 .menu-source-item__main {
@@ -1546,7 +1773,7 @@ select:focus, input:focus {
 .highlight-number {
     font-size: 3.5rem;
     font-weight: 800;
-    background: linear-gradient(45deg, var(--accent-color), #f39c12);
+    background: linear-gradient(45deg, var(--accent-color), var(--accent-highlight));
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -1586,7 +1813,7 @@ select:focus, input:focus {
     position: absolute;
     top: 5px;
     right: 5px;
-    background: rgba(231, 76, 60, 0.9);
+    background: color-mix(in srgb, var(--danger-color) 90%, transparent);
     color: white;
     border: none;
     padding: 4px 8px;
@@ -1604,7 +1831,7 @@ select:focus, input:focus {
 }
 
 .photo-delete-btn:hover {
-    background: #c0392b;
+    background: var(--danger-color-strong);
 }
 
 /* --- Lightbox --- */
@@ -1676,7 +1903,7 @@ select:focus, input:focus {
     top: 15px;
     right: 15px;
     z-index: 10;
-    background: rgba(231, 76, 60, 0.9);
+    background: color-mix(in srgb, var(--danger-color) 90%, transparent);
     color: white;
     border: none;
     padding: 6px 12px;
@@ -1695,7 +1922,7 @@ select:focus, input:focus {
 }
 
 .delete-btn:hover {
-    background: #c0392b;
+    background: var(--danger-color-strong);
     transform: scale(1.05);
 }
 
@@ -1901,8 +2128,8 @@ select:focus, input:focus {
     right: 18px;
     height: 3px;
     border-radius: 999px;
-    background: #3f86b8;
-    box-shadow: 0 0 0 2px rgba(63, 134, 184, 0.15);
+    background: var(--interactive-strong);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-strong) 15%, transparent);
     z-index: 5;
 }
 
@@ -1982,11 +2209,11 @@ select:focus, input:focus {
 }
 
 .resource-preview--doc {
-    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    background: linear-gradient(135deg, var(--resource-doc-start) 0%, var(--resource-doc-end) 100%);
 }
 
 .resource-preview--sheet {
-    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+    background: linear-gradient(135deg, var(--resource-sheet-start) 0%, var(--resource-sheet-end) 100%);
 }
 
 .resource-preview--file {
@@ -2955,13 +3182,13 @@ html, body, .app-container {
 }
 
 .court-weekday-option:hover {
-    border-color: #2980b9;
-    color: #2980b9;
+    border-color: var(--interactive-color);
+    color: var(--interactive-color);
 }
 
 .court-weekday-option input {
     margin: 0;
-    accent-color: #2980b9;
+    accent-color: var(--interactive-color);
 }
 
 /* 基礎按鈕：沉穩海軍藍風格 */
@@ -3028,7 +3255,7 @@ html, body, .app-container {
 }
 
 .court-booked--blue::before {
-    background-color: #2980b9 !important;
+    background-color: var(--interactive-color) !important;
 }
 
 .court-empty {
@@ -3917,6 +4144,19 @@ html, body, .app-container {
 
     .sidebar-pin-btn--sidebar {
         display: none !important;
+    }
+
+    .sidebar-tools {
+        left: 12px;
+        bottom: 12px;
+    }
+
+    .sidebar-theme-panel {
+        bottom: 48px;
+        left: 0;
+        max-width: calc(100vw - 44px);
+        gap: 6px;
+        padding: 8px 10px;
     }
 
     .showcase-crop-modal__dialog,

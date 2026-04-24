@@ -5,6 +5,85 @@
 const LAST_SECTION_KEY = 'vbt_last_section';
 const SIDEBAR_TOGGLED_KEY = 'vbt_sidebar_toggled';
 const SIDEBAR_PINNED_KEY = 'vbt_sidebar_pinned';
+const THEME_KEY = 'vbt_theme';
+const THEME_PRESETS = {
+    classic: {
+        mode: 'light',
+        primary: '#2c3e50',
+        accent: '#e67e22',
+        accentHighlight: '#f0a24b',
+        accentSoftText: '#b96a1c',
+        interactiveColor: '#2980b9',
+        interactiveStrong: '#3f86b8',
+        resourceDocStart: '#2563eb',
+        resourceDocEnd: '#1d4ed8',
+        resourceSheetStart: '#16a34a',
+        resourceSheetEnd: '#15803d',
+        bg: '#f0f2f5',
+        card: '#ffffff',
+        textMain: '#2d3436',
+        textMuted: '#636e72',
+        sidebarStart: '#2c3e50',
+        sidebarEnd: '#1a252f'
+    },
+    midnight: {
+        mode: 'dark',
+        primary: '#aab4c3',
+        accent: '#38bdf8',
+        accentHighlight: '#7dd3fc',
+        accentSoftText: '#0f5f86',
+        interactiveColor: '#60a5fa',
+        interactiveStrong: '#3b82f6',
+        resourceDocStart: '#0f172a',
+        resourceDocEnd: '#2563eb',
+        resourceSheetStart: '#0f766e',
+        resourceSheetEnd: '#14b8a6',
+        bg: '#16181d',
+        card: '#23262d',
+        textMain: '#e0e3e7',
+        textMuted: '#a9b0ba',
+        sidebarStart: '#0f172a',
+        sidebarEnd: '#020617'
+    },
+    forest: {
+        mode: 'light',
+        primary: '#2d5d4f',
+        accent: '#8fcf6a',
+        accentHighlight: '#b8e698',
+        accentSoftText: '#4d7b33',
+        interactiveColor: '#4c9b8a',
+        interactiveStrong: '#2f7f6d',
+        resourceDocStart: '#2d5d4f',
+        resourceDocEnd: '#4c9b8a',
+        resourceSheetStart: '#6aa84f',
+        resourceSheetEnd: '#8fcf6a',
+        bg: '#f0f2f5',
+        card: '#ffffff',
+        textMain: '#2d3436',
+        textMuted: '#636e72',
+        sidebarStart: '#2d5d4f',
+        sidebarEnd: '#21463b'
+    },
+    berry: {
+        mode: 'light',
+        primary: '#5a3d5c',
+        accent: '#d96cc2',
+        accentHighlight: '#f3a3e1',
+        accentSoftText: '#9d3b89',
+        interactiveColor: '#8b5cf6',
+        interactiveStrong: '#7c3aed',
+        resourceDocStart: '#5a3d5c',
+        resourceDocEnd: '#8b5cf6',
+        resourceSheetStart: '#d96cc2',
+        resourceSheetEnd: '#f3a3e1',
+        bg: '#f0f2f5',
+        card: '#ffffff',
+        textMain: '#2d3436',
+        textMuted: '#636e72',
+        sidebarStart: '#5a3d5c',
+        sidebarEnd: '#3d2940'
+    }
+};
 
 document.addEventListener('DOMContentLoaded', () => {
     // 1. 取得目前的權限狀態
@@ -24,6 +103,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     initializeCompatibilityFallbacks();
+    applySavedTheme();
+    initThemeControls();
 
     const sidebarBackdrop = document.getElementById('sidebar-backdrop');
     if (sidebarBackdrop) {
@@ -184,6 +265,7 @@ function closeSidebar() {
     }
     mainApp.classList.add('sidebar-toggled');
     sessionStorage.setItem(SIDEBAR_TOGGLED_KEY, 'true');
+    toggleThemePicker(false);
     syncSidebarPinButton();
     updateShowcaseCropGuide();
 }
@@ -219,10 +301,107 @@ function toggleSidebarPin() {
     if (shouldPin) {
         mainApp.classList.remove('sidebar-toggled');
         sessionStorage.setItem(SIDEBAR_TOGGLED_KEY, 'false');
+    } else {
+        mainApp.classList.add('sidebar-toggled');
+        sessionStorage.setItem(SIDEBAR_TOGGLED_KEY, 'true');
     }
 
     syncSidebarPinButton();
     updateShowcaseCropGuide();
+}
+
+function applyTheme(themeId, persist = true) {
+    const theme = THEME_PRESETS[themeId] || THEME_PRESETS.classic;
+    const root = document.documentElement;
+    root.style.setProperty('--primary-color', theme.primary);
+    root.style.setProperty('--accent-color', theme.accent);
+    root.style.setProperty('--accent-highlight', theme.accentHighlight);
+    root.style.setProperty('--accent-soft-bg', hexToRgba(theme.accent, 0.12));
+    root.style.setProperty('--accent-soft-text', theme.accentSoftText);
+    root.style.setProperty('--interactive-color', theme.interactiveColor);
+    root.style.setProperty('--interactive-soft', hexToRgba(theme.interactiveColor, 0.12));
+    root.style.setProperty('--interactive-strong', theme.interactiveStrong);
+    root.style.setProperty('--resource-doc-start', theme.resourceDocStart);
+    root.style.setProperty('--resource-doc-end', theme.resourceDocEnd);
+    root.style.setProperty('--resource-sheet-start', theme.resourceSheetStart);
+    root.style.setProperty('--resource-sheet-end', theme.resourceSheetEnd);
+    root.style.setProperty('--bg-color', theme.bg);
+    root.style.setProperty('--card-bg', theme.card);
+    root.style.setProperty('--text-main', theme.textMain);
+    root.style.setProperty('--text-muted', theme.textMuted);
+    root.style.setProperty('--sidebar-start', theme.sidebarStart);
+    root.style.setProperty('--sidebar-end', theme.sidebarEnd);
+    root.dataset.theme = themeId in THEME_PRESETS ? themeId : 'classic';
+    root.dataset.themeMode = theme.mode || 'light';
+    if (persist) {
+        localStorage.setItem(THEME_KEY, root.dataset.theme);
+    }
+    syncThemeButtons();
+}
+
+function applySavedTheme() {
+    applyTheme(localStorage.getItem(THEME_KEY) || 'classic', false);
+}
+
+function hexToRgba(hex, alpha) {
+    const normalized = String(hex || '').replace('#', '').trim();
+    if (!/^[\da-fA-F]{6}$/.test(normalized)) return `rgba(0, 0, 0, ${alpha})`;
+    const red = parseInt(normalized.slice(0, 2), 16);
+    const green = parseInt(normalized.slice(2, 4), 16);
+    const blue = parseInt(normalized.slice(4, 6), 16);
+    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function getCssVariableValue(name, fallback) {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return value || fallback;
+}
+
+function mixHex(colorA, colorB, ratio) {
+    const normalize = (value) => String(value || '').replace('#', '').trim();
+    const a = normalize(colorA);
+    const b = normalize(colorB);
+    if (!/^[\da-fA-F]{6}$/.test(a) || !/^[\da-fA-F]{6}$/.test(b)) return colorA || colorB || '#000000';
+    const weight = Math.max(0, Math.min(1, Number(ratio) || 0));
+    const mix = (index) => {
+        const first = parseInt(a.slice(index, index + 2), 16);
+        const second = parseInt(b.slice(index, index + 2), 16);
+        return Math.round(first + ((second - first) * weight)).toString(16).padStart(2, '0');
+    };
+    return `#${mix(0)}${mix(2)}${mix(4)}`;
+}
+
+function selectTheme(themeId) {
+    applyTheme(themeId, true);
+    toggleThemePicker(false);
+}
+
+function toggleThemePicker(forceState) {
+    const tools = document.getElementById('sidebar-tools');
+    const toggleButton = document.getElementById('sidebar-theme-toggle');
+    if (!tools || !toggleButton) return;
+    const nextState = typeof forceState === 'boolean' ? forceState : !tools.classList.contains('theme-open');
+    tools.classList.toggle('theme-open', nextState);
+    toggleButton.classList.toggle('active', nextState);
+    toggleButton.setAttribute('aria-expanded', String(nextState));
+}
+
+function syncThemeButtons() {
+    const activeTheme = document.documentElement.dataset.theme || 'classic';
+    document.querySelectorAll('.sidebar-theme-option').forEach((button) => {
+        const isActive = button.dataset.themeId === activeTheme;
+        button.classList.toggle('active', isActive);
+        button.setAttribute('aria-pressed', String(isActive));
+    });
+}
+
+function initThemeControls() {
+    document.addEventListener('click', (event) => {
+        const tools = document.getElementById('sidebar-tools');
+        if (!tools || !tools.classList.contains('theme-open')) return;
+        if (tools.contains(event.target)) return;
+        toggleThemePicker(false);
+    });
 }
 
 function syncSidebarPinButton() {
@@ -523,7 +702,7 @@ async function loadPendingUsers() {
         const users = await response.json();
         
         if (users.length === 0) {
-            container.innerHTML = '<p style="text-align:center; color:#999; padding: 20px;">目前沒有待審核申請。</p>';
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding: 20px;">目前沒有待審核申請。</p>';
             return;
         }
         
@@ -533,11 +712,11 @@ async function loadPendingUsers() {
                 <li style="display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid #eee;">
                     <div>
                         <strong style="font-size: 1.1em;">${user.username}</strong> 
-                        <span style="color: #666; font-size: 0.9em; margin-left: 10px; background: #f0f2f5; padding: 4px 8px; border-radius: 6px;">申請身分：${user.role === 'captain' ? '隊長' : '隊員'}</span>
+                        <span style="color: var(--accent-soft-text); font-size: 0.9em; margin-left: 10px; background: var(--accent-soft-bg); padding: 4px 8px; border-radius: 6px;">申請身分：${user.role === 'captain' ? '隊長' : '隊員'}</span>
                     </div>
                     <div style="display: flex; gap: 10px;">
-                        <button onclick="approveUser(${user.id}, 'approve')" class="primary-btn-sm" style="background: #2ecc71;">通過</button>
-                        <button onclick="approveUser(${user.id}, 'reject')" class="primary-btn-sm" style="background: #e74c3c;">拒絕</button>
+                        <button onclick="approveUser(${user.id}, 'approve')" class="primary-btn-sm" style="background: var(--interactive-color);">通過</button>
+                        <button onclick="approveUser(${user.id}, 'reject')" class="primary-btn-sm" style="background: var(--accent-color);">拒絕</button>
                     </div>
                 </li>
             `;
@@ -546,7 +725,7 @@ async function loadPendingUsers() {
         container.innerHTML = html;
         
     } catch (error) {
-        container.innerHTML = '<p style="text-align:center; color:#e74c3c;">資料載入失敗。</p>';
+        container.innerHTML = '<p style="text-align:center; color:var(--danger-color);">資料載入失敗。</p>';
     }
 }
 
@@ -580,7 +759,7 @@ async function loadTeamMembers() {
         const users = await response.json();
         
         if (users.length === 0) {
-            container.innerHTML = '<p style="text-align:center; color:#999; padding: 20px;">目前沒有其他隊員。</p>';
+            container.innerHTML = '<p style="text-align:center; color:var(--text-muted); padding: 20px;">目前沒有其他隊員。</p>';
             return;
         }
         
@@ -599,7 +778,7 @@ async function loadTeamMembers() {
                             <option value="member" ${isMember}>隊員</option>
                             <option value="captain" ${isCaptain}>隊長</option>
                         </select>
-                        <button onclick="deleteUser(${user.id})" class="primary-btn-sm" style="background: #e74c3c;">刪除</button>
+                        <button onclick="deleteUser(${user.id})" class="primary-btn-sm" style="background: var(--accent-color);">刪除</button>
                     </div>
                 </li>
             `;
@@ -608,7 +787,7 @@ async function loadTeamMembers() {
         container.innerHTML = html;
         
     } catch (error) {
-        container.innerHTML = '<p style="text-align:center; color:#e74c3c;">名單載入失敗。</p>';
+        container.innerHTML = '<p style="text-align:center; color:var(--danger-color);">名單載入失敗。</p>';
     }
 }
 
@@ -4081,47 +4260,77 @@ function switchStrategyTab(tabType) {
 }
 
 function getProbabilityCellTone(winRate, attempts) {
-    if (!attempts) return '#f8fafc';
-    if (attempts < 2) return '#f2f6f9';
+    const isDarkMode = document.documentElement.dataset.themeMode === 'dark';
+    const surfaceBase = isDarkMode ? '#23262d' : '#f3f6f9';
+    const surfaceSoft = isDarkMode ? '#2a2f37' : '#edf3f8';
+    const interactiveStrong = getCssVariableValue('--interactive-strong', isDarkMode ? '#3b82f6' : '#5f86a7');
+    if (!attempts) return mixHex(surfaceBase, interactiveStrong, isDarkMode ? 0.06 : 0.02);
+    if (attempts < 2) return mixHex(surfaceSoft, interactiveStrong, isDarkMode ? 0.1 : 0.05);
 
-    const blueScale = [
-        '#f3f6f9',
-        '#edf3f8',
-        '#e6eef5',
-        '#dde8f2',
-        '#d3e2ee',
-        '#c5d9e8',
-        '#b5cde0',
-        '#9dbbd3',
-        '#7ea4c1',
-        '#5f86a7',
-    ];
+    const scales = isDarkMode
+        ? [0.08, 0.12, 0.18, 0.24, 0.3, 0.38, 0.48, 0.6, 0.72, 0.82]
+        : [0.04, 0.08, 0.12, 0.18, 0.24, 0.32, 0.42, 0.56, 0.7, 0.82];
     const normalized = Math.max(0, Math.min(100, Number(winRate) || 0));
-    const index = Math.min(blueScale.length - 1, Math.floor(normalized / 10));
-    return blueScale[index];
+    const index = Math.min(scales.length - 1, Math.floor(normalized / 10));
+    return mixHex(surfaceBase, interactiveStrong, scales[index]);
 }
 
 
 function getProbabilityCellPalette(winRate, attempts) {
     const background = getProbabilityCellTone(winRate, attempts);
+    const isDarkMode = document.documentElement.dataset.themeMode === 'dark';
+    const interactiveColor = getCssVariableValue('--interactive-color', isDarkMode ? '#60a5fa' : '#4d667c');
+    const interactiveStrong = getCssVariableValue('--interactive-strong', isDarkMode ? '#3b82f6' : '#355269');
+    const textMain = getCssVariableValue('--text-main', isDarkMode ? '#e0e3e7' : '#203444');
+    const textMuted = getCssVariableValue('--text-muted', isDarkMode ? '#a9b0ba' : '#6b7f90');
     if (!attempts) {
-        return { background, text: '#5d7082', subtext: '#708394', border: 'rgba(77, 102, 124, 0.08)' };
+        return {
+            background,
+            text: textMuted,
+            subtext: textMuted,
+            border: hexToRgba(interactiveColor, isDarkMode ? 0.18 : 0.08)
+        };
     }
     if (attempts < 2) {
-        return { background, text: '#4f6477', subtext: '#6d8090', border: 'rgba(77, 102, 124, 0.10)' };
+        return {
+            background,
+            text: textMain,
+            subtext: textMuted,
+            border: hexToRgba(interactiveColor, isDarkMode ? 0.24 : 0.1)
+        };
     }
 
     const normalized = Math.max(0, Math.min(100, Number(winRate) || 0));
     if (normalized >= 80) {
-        return { background, text: '#ffffff', subtext: 'rgba(255, 255, 255, 0.92)', border: 'rgba(53, 82, 105, 0.18)' };
+        return {
+            background,
+            text: isDarkMode ? '#f5f7fa' : '#ffffff',
+            subtext: isDarkMode ? 'rgba(245, 247, 250, 0.85)' : 'rgba(255, 255, 255, 0.92)',
+            border: hexToRgba(interactiveStrong, isDarkMode ? 0.34 : 0.18)
+        };
     }
     if (normalized >= 60) {
-        return { background, text: '#203444', subtext: '#f4f8fb', border: 'rgba(53, 82, 105, 0.16)' };
+        return {
+            background,
+            text: isDarkMode ? '#e7edf5' : '#203444',
+            subtext: isDarkMode ? '#cad4df' : '#f4f8fb',
+            border: hexToRgba(interactiveStrong, isDarkMode ? 0.28 : 0.16)
+        };
     }
     if (normalized >= 30) {
-        return { background, text: '#324a5e', subtext: '#4c6478', border: 'rgba(77, 102, 124, 0.14)' };
+        return {
+            background,
+            text: isDarkMode ? '#d2d9e2' : '#324a5e',
+            subtext: isDarkMode ? '#aeb8c4' : '#4c6478',
+            border: hexToRgba(interactiveStrong, isDarkMode ? 0.22 : 0.14)
+        };
     }
-    return { background, text: '#4f6477', subtext: '#6b7f90', border: 'rgba(77, 102, 124, 0.12)' };
+    return {
+        background,
+        text: isDarkMode ? textMain : '#4f6477',
+        subtext: isDarkMode ? textMuted : '#6b7f90',
+        border: hexToRgba(interactiveStrong, isDarkMode ? 0.18 : 0.12)
+    };
 }
 
 function renderProbabilityMatrix(stats, emptyMessage, selectedWeekdays, selectedCourts) {
