@@ -2,7 +2,6 @@
 // 1. Initialization and Layout Navigation
 // ==========================================
 
-let sidebarHintTimer = null;
 const LAST_SECTION_KEY = 'vbt_last_section';
 const SIDEBAR_TOGGLED_KEY = 'vbt_sidebar_toggled';
 const SIDEBAR_PINNED_KEY = 'vbt_sidebar_pinned';
@@ -22,11 +21,26 @@ document.addEventListener('DOMContentLoaded', () => {
     // 4. 如果有存檔的資訊，更新使用者名稱等 UI
     if (savedUsername && savedRole) {
         applyLoginUI(savedUsername, savedRole);
-    } else {
-        window.setTimeout(showSidebarToggleHint, 500);
     }
 
     initializeCompatibilityFallbacks();
+
+    const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+    if (sidebarBackdrop) {
+        sidebarBackdrop.addEventListener('click', () => {
+            closeSidebar();
+        });
+    }
+
+    const appTitle = document.getElementById('app-title');
+    if (appTitle) {
+        appTitle.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            showSection('home');
+        });
+    }
+
 });
 
 function getActionButton(trigger) {
@@ -148,7 +162,6 @@ function toggleSidebar() {
     }
     mainApp.classList.toggle('sidebar-toggled');
     sessionStorage.setItem(SIDEBAR_TOGGLED_KEY, String(mainApp.classList.contains('sidebar-toggled')));
-    hideSidebarToggleHint();
     syncSidebarPinButton();
     updateShowcaseCropGuide();
 }
@@ -158,7 +171,6 @@ function openSidebar() {
     if (!mainApp || !mainApp.classList.contains('sidebar-toggled')) return;
     mainApp.classList.remove('sidebar-toggled');
     sessionStorage.setItem(SIDEBAR_TOGGLED_KEY, 'false');
-    hideSidebarToggleHint();
     syncSidebarPinButton();
     updateShowcaseCropGuide();
 }
@@ -172,7 +184,6 @@ function closeSidebar() {
     }
     mainApp.classList.add('sidebar-toggled');
     sessionStorage.setItem(SIDEBAR_TOGGLED_KEY, 'true');
-    hideSidebarToggleHint();
     syncSidebarPinButton();
     updateShowcaseCropGuide();
 }
@@ -240,33 +251,6 @@ function getInitialSection(role) {
     return canAccessSection(savedSection, role) ? savedSection : 'home';
 }
 
-function showSidebarToggleHint() {
-    const hint = document.getElementById('sidebar-toggle-hint');
-    const mainApp = document.getElementById('main-app');
-    if (!hint) return;
-    if (!mainApp || !mainApp.classList.contains('sidebar-toggled')) {
-        hideSidebarToggleHint();
-        return;
-    }
-
-    window.clearTimeout(sidebarHintTimer);
-    hint.classList.remove('visible');
-    void hint.offsetWidth;
-    hint.classList.add('visible');
-
-    sidebarHintTimer = window.setTimeout(() => {
-        hint.classList.remove('visible');
-    }, 4500);
-}
-
-function hideSidebarToggleHint() {
-    const hint = document.getElementById('sidebar-toggle-hint');
-    if (!hint) return;
-
-    window.clearTimeout(sidebarHintTimer);
-    hint.classList.remove('visible');
-}
-
 function showSection(sectionId) {
     const sections = document.querySelectorAll('.content-section');
     sections.forEach(section => {
@@ -300,7 +284,6 @@ function showSection(sectionId) {
     if (mainApp && !mainApp.classList.contains('sidebar-pinned')) {
         closeSidebar();
     }
-
 }
 
 function toggleSidebarMobile() {
@@ -500,7 +483,6 @@ function applyLoginUI(username, role) {
     loadGallery();
     loadCourtStatus();
     loadTeamResources();
-    window.setTimeout(showSidebarToggleHint, 300);
 }
 
 function handleLogout() {
@@ -1720,11 +1702,13 @@ window.addEventListener('load', updateShowcaseCropGuide);
 window.addEventListener('resize', updateShowcaseCropGuide);
 window.addEventListener('load', initTrainingMenu);
 window.addEventListener('load', initPracticeWeekdayListeners);
+window.addEventListener('load', initPracticeMenuTouchDrag);
 
 const menuState = {
     rows: [],
     editingId: null,
     editorOpen: false,
+    builderOpen: true,
     practiceMenu: {
         first_half: [],
         second_half: [],
@@ -1739,6 +1723,23 @@ const menuState = {
         fatigue_levels: [],
         difficulty_levels: []
     }
+};
+
+let menuBuilderDragOpenTimer = null;
+const PRACTICE_MENU_TOUCH_HOLD_MS = 240;
+const PRACTICE_MENU_TOUCH_MOVE_TOLERANCE = 12;
+const practiceMenuTouchDrag = {
+    pointerId: null,
+    holdTimer: null,
+    dragging: false,
+    payload: null,
+    sourceElement: null,
+    activeZone: null,
+    startX: 0,
+    startY: 0,
+    lastX: 0,
+    lastY: 0,
+    suppressClickUntil: 0
 };
 
 const PRACTICE_WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
@@ -1920,7 +1921,7 @@ function createPracticeMenuSourceItem(row, sourceLabel, sourceType) {
     const encodedName = encodeURIComponent(row.name || '');
     const isCaptain = localStorage.getItem('vbt_role') === 'captain';
     return `
-        <article class="menu-source-item" draggable="true" ondragstart="handlePracticeMenuDragStart(event, '${escapeHtml(sourceType)}', ${Number(row.id || 0)}, decodeURIComponent('${encodedName}'))">
+        <article class="menu-source-item" draggable="true" data-practice-drag-kind="source" data-source-type="${escapeHtml(sourceType)}" data-source-id="${Number(row.id || 0)}" data-source-name="${encodedName}" ondragstart="handlePracticeMenuDragStart(event, '${escapeHtml(sourceType)}', ${Number(row.id || 0)}, decodeURIComponent('${encodedName}'))" ondragend="handlePracticeMenuDragEnd()">
             <div class="menu-source-item__main">
                 <div class="menu-source-item__title">${escapeHtml(row.name)}</div>
                 <div class="menu-source-item__meta">${escapeHtml((row.court_modes || []).join(' / ') || '-')} &middot; ${escapeHtml(String(row.people_count || '-'))} 人 &middot; ${escapeHtml((row.difficulty_levels || []).join(' / ') || '-')}</div>
@@ -2115,13 +2116,229 @@ function toggleMenuEditor(forceState) {
     if (icon) icon.textContent = nextState ? '▴' : '▾';
 }
 
+function syncMenuBuilderVisibility() {
+    const card = document.getElementById('menu-builder-card');
+    const body = document.getElementById('menu-builder-body');
+    const toggle = document.getElementById('menu-builder-toggle');
+    if (!card || !body || !toggle) return;
+
+    card.classList.toggle('is-open', menuState.builderOpen);
+    card.classList.toggle('is-collapsed', !menuState.builderOpen);
+    body.style.display = menuState.builderOpen ? 'block' : 'none';
+    toggle.setAttribute('aria-expanded', String(menuState.builderOpen));
+    toggle.title = menuState.builderOpen ? '\u6536\u5408\u83dc\u55ae\u7de8\u6392' : '\u986f\u793a\u83dc\u55ae\u7de8\u6392';
+}
+
+function toggleMenuBuilder(forceState) {
+    menuState.builderOpen = typeof forceState === 'boolean' ? forceState : !menuState.builderOpen;
+    syncMenuBuilderVisibility();
+}
+
+function setMenuBuilderDragState(isDragging) {
+    window.clearTimeout(menuBuilderDragOpenTimer);
+    const card = document.getElementById('menu-builder-card');
+    document.body.classList.toggle('dragging-menu-item', Boolean(isDragging));
+    if (!card) return;
+    card.classList.toggle('is-dragging', Boolean(isDragging));
+}
+
+function clearPracticeMenuTouchHold() {
+    window.clearTimeout(practiceMenuTouchDrag.holdTimer);
+    practiceMenuTouchDrag.holdTimer = null;
+}
+
+function resetPracticeMenuTouchDrag() {
+    clearPracticeMenuTouchHold();
+    if (practiceMenuTouchDrag.sourceElement) {
+        practiceMenuTouchDrag.sourceElement.classList.remove('is-touch-dragging');
+    }
+    practiceMenuTouchDrag.pointerId = null;
+    practiceMenuTouchDrag.dragging = false;
+    practiceMenuTouchDrag.payload = null;
+    practiceMenuTouchDrag.sourceElement = null;
+    practiceMenuTouchDrag.activeZone = null;
+}
+
+function getPracticeMenuTouchPayload(target) {
+    const sourceItem = target.closest('.menu-source-item');
+    if (sourceItem) {
+        return {
+            payload: {
+                drag_kind: 'source',
+                source_type: sourceItem.dataset.sourceType || '',
+                source_id: Number(sourceItem.dataset.sourceId || 0) || null,
+                name: decodeURIComponent(sourceItem.dataset.sourceName || '')
+            },
+            sourceElement: sourceItem
+        };
+    }
+
+    const existingItem = target.closest('.menu-drop-zone__item');
+    if (existingItem) {
+        const halfKey = existingItem.dataset.halfKey || '';
+        const index = Number(existingItem.dataset.index || -1);
+        const item = (menuState.practiceMenu[halfKey] || [])[index];
+        if (!item) return null;
+        return {
+            payload: {
+                drag_kind: 'existing',
+                from_half: halfKey,
+                from_index: index,
+                item
+            },
+            sourceElement: existingItem
+        };
+    }
+
+    return null;
+}
+
+function updatePracticeMenuTouchDropTarget(clientX, clientY) {
+    const target = document.elementFromPoint(clientX, clientY);
+    const zone = target ? target.closest('.menu-drop-zone') : null;
+    if (!zone) {
+        practiceMenuTouchDrag.activeZone = null;
+        clearPracticeMenuDropIndicators();
+        return;
+    }
+
+    practiceMenuTouchDrag.activeZone = zone;
+    const insertIndex = getPracticeMenuInsertIndex(zone, clientY);
+    updatePracticeMenuDropIndicator(zone, insertIndex);
+}
+
+async function performPracticeMenuDropFromPayload(payload, halfKey, zone, clientY) {
+    const insertIndex = getPracticeMenuInsertIndex(zone, clientY);
+    if (payload.drag_kind === 'existing') {
+        const fromHalf = payload.from_half;
+        const fromIndex = Number(payload.from_index);
+        const sourceItems = [...(menuState.practiceMenu[fromHalf] || [])];
+        const [movedItem] = sourceItems.splice(fromIndex, 1);
+        if (!movedItem) return;
+        const targetItems = fromHalf === halfKey ? sourceItems : [...(menuState.practiceMenu[halfKey] || [])];
+        const adjustedIndex = fromHalf === halfKey && fromIndex < insertIndex ? insertIndex - 1 : insertIndex;
+        const normalizedIndex = Math.max(0, Math.min(adjustedIndex, targetItems.length));
+        targetItems.splice(normalizedIndex, 0, movedItem);
+        menuState.practiceMenu[fromHalf] = sourceItems;
+        menuState.practiceMenu[halfKey] = targetItems;
+        await savePracticeMenu();
+        await loadPracticeMenu();
+        return;
+    }
+
+    const nextItems = [...(menuState.practiceMenu[halfKey] || [])];
+    const normalizedIndex = Math.max(0, Math.min(insertIndex, nextItems.length));
+    nextItems.splice(normalizedIndex, 0, {
+        source_type: payload.source_type,
+        source_id: payload.source_id || null,
+        name: payload.name || '?芸??蝺?'
+    });
+    menuState.practiceMenu[halfKey] = nextItems;
+    await savePracticeMenu();
+    await loadPracticeMenu();
+}
+
+function initPracticeMenuTouchDrag() {
+    if (!window.PointerEvent) return;
+
+    document.addEventListener('pointerdown', (event) => {
+        if (event.pointerType !== 'touch' || !event.isPrimary) return;
+        if (event.target.closest('button, input, textarea, select, a, label')) return;
+
+        const match = getPracticeMenuTouchPayload(event.target);
+        if (!match) return;
+
+        clearPracticeMenuTouchHold();
+        practiceMenuTouchDrag.pointerId = event.pointerId;
+        practiceMenuTouchDrag.dragging = false;
+        practiceMenuTouchDrag.payload = match.payload;
+        practiceMenuTouchDrag.sourceElement = match.sourceElement;
+        practiceMenuTouchDrag.activeZone = null;
+        practiceMenuTouchDrag.startX = event.clientX;
+        practiceMenuTouchDrag.startY = event.clientY;
+        practiceMenuTouchDrag.lastX = event.clientX;
+        practiceMenuTouchDrag.lastY = event.clientY;
+        practiceMenuTouchDrag.holdTimer = window.setTimeout(() => {
+            practiceMenuTouchDrag.dragging = true;
+            practiceMenuTouchDrag.suppressClickUntil = Date.now() + 400;
+            setMenuBuilderDragState(true);
+            toggleMenuBuilder(true);
+            if (practiceMenuTouchDrag.sourceElement) {
+                practiceMenuTouchDrag.sourceElement.classList.add('is-touch-dragging');
+            }
+            updatePracticeMenuTouchDropTarget(practiceMenuTouchDrag.lastX, practiceMenuTouchDrag.lastY);
+        }, PRACTICE_MENU_TOUCH_HOLD_MS);
+    }, { passive: true });
+
+    document.addEventListener('pointermove', (event) => {
+        if (event.pointerId !== practiceMenuTouchDrag.pointerId) return;
+
+        practiceMenuTouchDrag.lastX = event.clientX;
+        practiceMenuTouchDrag.lastY = event.clientY;
+
+        if (!practiceMenuTouchDrag.dragging) {
+            const distanceX = Math.abs(event.clientX - practiceMenuTouchDrag.startX);
+            const distanceY = Math.abs(event.clientY - practiceMenuTouchDrag.startY);
+            if (distanceX > PRACTICE_MENU_TOUCH_MOVE_TOLERANCE || distanceY > PRACTICE_MENU_TOUCH_MOVE_TOLERANCE) {
+                resetPracticeMenuTouchDrag();
+            }
+            return;
+        }
+
+        event.preventDefault();
+        updatePracticeMenuTouchDropTarget(event.clientX, event.clientY);
+    }, { passive: false });
+
+    document.addEventListener('pointerup', async (event) => {
+        if (event.pointerId !== practiceMenuTouchDrag.pointerId) return;
+
+        const wasDragging = practiceMenuTouchDrag.dragging;
+        const payload = practiceMenuTouchDrag.payload;
+        const zone = practiceMenuTouchDrag.activeZone;
+        const clientY = practiceMenuTouchDrag.lastY;
+        resetPracticeMenuTouchDrag();
+
+        if (!wasDragging || !payload || !zone) {
+            handlePracticeMenuDragEnd();
+            return;
+        }
+
+        const halfKey = zone.dataset.halfKey || '';
+        if (!halfKey) {
+            handlePracticeMenuDragEnd();
+            return;
+        }
+
+        try {
+            await performPracticeMenuDropFromPayload(payload, halfKey, zone, clientY);
+        } catch (error) {
+            console.error('Failed to drop practice menu item via touch', error);
+        } finally {
+            handlePracticeMenuDragEnd();
+        }
+    }, { passive: false });
+
+    document.addEventListener('pointercancel', (event) => {
+        if (event.pointerId !== practiceMenuTouchDrag.pointerId) return;
+        resetPracticeMenuTouchDrag();
+        handlePracticeMenuDragEnd();
+    });
+
+    document.addEventListener('click', (event) => {
+        if (Date.now() > practiceMenuTouchDrag.suppressClickUntil) return;
+        if (!event.target.closest('.menu-source-item, .menu-drop-zone__item, .menu-drop-zone')) return;
+        event.preventDefault();
+        event.stopPropagation();
+    }, true);
+}
+
 function renderPracticeMenuDropZoneItems(halfKey) {
     const items = menuState.practiceMenu[halfKey] || [];
     if (!items.length) {
         return '<div class="menu-drop-zone__empty">把菜單拖曳到這裡，或手動新增。</div>';
     }
     return items.map((item, index) => `
-        <div class="menu-drop-zone__item" draggable="true" data-half-key="${halfKey}" data-index="${index}" ondragstart="handlePracticeMenuExistingDragStart(event, '${halfKey}', ${index})">
+        <div class="menu-drop-zone__item" draggable="true" data-practice-drag-kind="existing" data-half-key="${halfKey}" data-index="${index}" ondragstart="handlePracticeMenuExistingDragStart(event, '${halfKey}', ${index})" ondragend="handlePracticeMenuDragEnd()">
             <span>${escapeHtml(item.name || '未命名訓練')}</span>
             <button type="button" onclick="removePracticeMenuItem('${halfKey}', ${index})">&times;</button>
         </div>
@@ -2228,6 +2445,10 @@ async function updatePracticeWeekdays() {
 }
 
 function handlePracticeMenuDragStart(event, sourceType, sourceId, sourceName) {
+    setMenuBuilderDragState(true);
+    menuBuilderDragOpenTimer = window.setTimeout(() => {
+        toggleMenuBuilder(true);
+    }, 120);
     event.dataTransfer.setData('text/plain', JSON.stringify({
         drag_kind: 'source',
         source_type: sourceType,
@@ -2239,12 +2460,21 @@ function handlePracticeMenuDragStart(event, sourceType, sourceId, sourceName) {
 function handlePracticeMenuExistingDragStart(event, halfKey, index) {
     const item = (menuState.practiceMenu[halfKey] || [])[index];
     if (!item) return;
+    setMenuBuilderDragState(true);
+    menuBuilderDragOpenTimer = window.setTimeout(() => {
+        toggleMenuBuilder(true);
+    }, 120);
     event.dataTransfer.setData('text/plain', JSON.stringify({
         drag_kind: 'existing',
         from_half: halfKey,
         from_index: index,
         item
     }));
+}
+
+function handlePracticeMenuDragEnd() {
+    setMenuBuilderDragState(false);
+    clearPracticeMenuDropIndicators();
 }
 
 function handlePracticeMenuDragOver(event) {
@@ -2261,6 +2491,7 @@ async function handlePracticeMenuDrop(event, halfKey) {
         const zone = event.currentTarget;
         const insertIndex = getPracticeMenuInsertIndex(zone, event.clientY);
         const payload = JSON.parse(event.dataTransfer.getData('text/plain'));
+        return await performPracticeMenuDropFromPayload(payload, halfKey, zone, event.clientY);
         if (payload.drag_kind === 'existing') {
             const fromHalf = payload.from_half;
             const fromIndex = Number(payload.from_index);
@@ -2290,7 +2521,7 @@ async function handlePracticeMenuDrop(event, halfKey) {
     } catch (error) {
         console.error('Failed to drop practice menu item', error);
     } finally {
-        clearPracticeMenuDropIndicators();
+        handlePracticeMenuDragEnd();
     }
 }
 
@@ -2534,7 +2765,9 @@ async function deleteMenuItem() {
 
 async function initTrainingMenu() {
     const resultContainer = document.getElementById('menu-result');
+    syncMenuBuilderVisibility();
     await loadPracticeMenu();
+    toggleMenuBuilder(true);
     ensureMenuEditorActionsPlacement();
     if (resultContainer) {
         resultContainer.innerHTML = '<div class="menu-empty-state">菜單資料庫載入中...</div>';
@@ -2544,6 +2777,7 @@ async function initTrainingMenu() {
         const data = await refreshMenuData(false);
         resetMenuEditor();
         toggleMenuEditor(false);
+        toggleMenuBuilder(true);
         initMenuFilterAutoRefresh();
 
         if (!menuState.rows.length && resultContainer) {

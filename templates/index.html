@@ -86,15 +86,8 @@
                         <span class="sidebar-toggle__bar"></span>
                         <span class="sidebar-toggle__bar"></span>
                     </div>
-                    
-                    <div id="sidebar-toggle-hint" class="sidebar-toggle-hint" aria-hidden="true">
-                        <span class="sidebar-toggle-hint__arrow">
-                            <i class="fas fa-long-arrow-alt-left"></i>
-                        </span>
-                        <span class="sidebar-toggle-hint__text">點這裡展開選單</span>
-                    </div>
                 </div>
-                <h1 id="app-title">台大電機女排</h1>
+                <h1 id="app-title" onclick="showSection('home')" role="button" tabindex="0" aria-label="&#x56DE;&#x5230;&#x9996;&#x9801;">台大電機女排</h1>
                 <div class="user-profile">
                     <div id="guest-zone">
 
@@ -175,7 +168,7 @@
                 <div id="schedule" class="content-section" style="display:none;">
                     <h3 class="section-title">場地狀態</h3>   
                     
-                    <div class="card auth-only captain-only" style="background: white; padding: 20px 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px; border-top: 4px solid var(--accent-color); display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;">
+                    <div class="card auth-only captain-only schedule-scraper-card" style="background: white; padding: 20px 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px; border-top: 4px solid var(--accent-color); display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;">
 
                         <h4 style="margin: 0; color: #2c3e50; font-size: 1.15rem; display: flex; align-items: center; gap: 8px; margin-right: 15px; align-self: center;">
                             <i class="fas fa-sliders-h" style="color: #7f8c8d;"></i> 爬蟲控制面板
@@ -183,21 +176,21 @@
 
                         <div style="width: 1px; height: 60px; background: #ccc; margin: 0 60px;"></div>
 
-                        <div style="display: flex; flex-direction: column; gap: 5px;">
+                        <div class="schedule-date-field" style="display: flex; flex-direction: column; gap: 5px;">
                             <label for="config-start" style="font-size: 0.8rem; font-weight: bold; color: #666;">開始日期</label>
                             <input type="date" id="config-start" style="padding: 8px; border: 1px solid #ccc; border-radius: 6px; width: 135px; color: #333;">
                         </div>
 
-                        <div style="display: flex; flex-direction: column; gap: 5px;">
+                        <div class="schedule-date-field" style="display: flex; flex-direction: column; gap: 5px;">
                             <label for="config-end" style="font-size: 0.8rem; font-weight: bold; color: #666;">結束日期</label>
                             <input type="date" id="config-end" style="padding: 8px; border: 1px solid #ccc; border-radius: 6px; width: 135px; color: #333;">
                         </div>
 
-                        <button class="court-btn" onclick="scrapeThisMonth()" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #f4f6f7; color: #2980b9; border: 1px solid #bdc3c7; padding: 0 15px; border-radius: 6px; height: 40px; font-weight: bold;">
+                        <button class="court-btn schedule-month-btn" onclick="scrapeThisMonth()" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #f4f6f7; color: #2980b9; border: 1px solid #bdc3c7; padding: 0 15px; border-radius: 6px; height: 40px; font-weight: bold;">
                             <i class="fas fa-calendar-day"></i> 這個月
                         </button>
 
-                        <button class="court-btn" onclick="scrapeNextMonth()" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin-right: auto; background: #f4f6f7; color: #2980b9; border: 1px solid #bdc3c7; padding: 0 15px; border-radius: 6px; height: 40px; font-weight: bold;">
+                        <button class="court-btn schedule-month-btn" onclick="scrapeNextMonth()" style="display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin-right: auto; background: #f4f6f7; color: #2980b9; border: 1px solid #bdc3c7; padding: 0 15px; border-radius: 6px; height: 40px; font-weight: bold;">
                             <i class="fas fa-calendar-day"></i> 下個月
                         </button>
                         
@@ -549,25 +542,30 @@
                             </div>
                         </div>
                     </div>
-                    <div class="card menu-card captain-only auth-only menu-builder-card">
+                    <div class="card menu-card captain-only auth-only menu-builder-card" id="menu-builder-card">
                         <div class="strategy-panel-header">
-                            <div>
-                                <h4 class="strategy-panel-title">菜單編排</h4>
+                            <div class="menu-builder-card__title-wrap">
+                                <button type="button" class="menu-builder-toggle" id="menu-builder-toggle" onclick="toggleMenuBuilder()" aria-expanded="true" aria-controls="menu-builder-body" title="&#x6536;&#x5408;&#x83DC;&#x55AE;&#x7DE8;&#x6392;">
+                                    <i class="fas fa-columns"></i>
+                                </button>
+                                <h4 class="strategy-panel-title">&#x83DC;&#x55AE;&#x7DE8;&#x6392;</h4>
                             </div>
                         </div>
-                        <div class="menu-builder-layout">
-                            <div class="menu-builder-half">
-                                <div id="menu-first-half-zone" class="menu-drop-zone" ondragover="handlePracticeMenuDragOver(event)" ondragleave="handlePracticeMenuDragLeave(event)" ondrop="handlePracticeMenuDrop(event, 'first_half')"></div>
-                                <div class="menu-manual-add">
-                                    <input type="text" id="menu-first-half-manual" placeholder="輸入菜單名稱...">
-                                    <button type="button" class="court-btn" onclick="addManualPracticeMenuItem('first_half')">加入</button>
+                        <div class="menu-builder-body" id="menu-builder-body" style="display:block;">
+                            <div class="menu-builder-layout">
+                                <div class="menu-builder-half">
+                                    <div id="menu-first-half-zone" class="menu-drop-zone" data-half-key="first_half" ondragover="handlePracticeMenuDragOver(event)" ondragleave="handlePracticeMenuDragLeave(event)" ondrop="handlePracticeMenuDrop(event, 'first_half')"></div>
+                                    <div class="menu-manual-add">
+                                        <input type="text" id="menu-first-half-manual" placeholder="&#x8F38;&#x5165;&#x83DC;&#x55AE;&#x540D;&#x7A31;...">
+                                        <button type="button" class="court-btn" onclick="addManualPracticeMenuItem('first_half')">&#x52A0;&#x5165;</button>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="menu-builder-half">
-                                <div id="menu-second-half-zone" class="menu-drop-zone" ondragover="handlePracticeMenuDragOver(event)" ondragleave="handlePracticeMenuDragLeave(event)" ondrop="handlePracticeMenuDrop(event, 'second_half')"></div>
-                                <div class="menu-manual-add">
-                                    <input type="text" id="menu-second-half-manual" placeholder="輸入菜單名稱...">
-                                    <button type="button" class="court-btn" onclick="addManualPracticeMenuItem('second_half')">加入</button>
+                                <div class="menu-builder-half">
+                                    <div id="menu-second-half-zone" class="menu-drop-zone" data-half-key="second_half" ondragover="handlePracticeMenuDragOver(event)" ondragleave="handlePracticeMenuDragLeave(event)" ondrop="handlePracticeMenuDrop(event, 'second_half')"></div>
+                                    <div class="menu-manual-add">
+                                        <input type="text" id="menu-second-half-manual" placeholder="&#x8F38;&#x5165;&#x83DC;&#x55AE;&#x540D;&#x7A31;...">
+                                        <button type="button" class="court-btn" onclick="addManualPracticeMenuItem('second_half')">&#x52A0;&#x5165;</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -672,7 +670,7 @@
                         </div>
                         
                         <div class="footer-copyright" style="font-size: 0.85rem; color: #888;">
-                            Copyright &copy; 2026 電機女排. All rights reserved. Designed by B13 鍾承芳.
+                            &copy; 2026 電機女排. All rights reserved. Designed by B13 鍾承芳.
                         </div>
                         
                     </div>

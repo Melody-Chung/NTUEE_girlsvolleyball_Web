@@ -49,6 +49,11 @@ body {
     min-height: 100vh;
 }
 
+body.dragging-menu-item {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
 .app-container {
     display: flex;
     min-height: 100vh;
@@ -359,10 +364,17 @@ body {
     color: #18344b;
     text-shadow: 0 1px 0 rgba(255, 255, 255, 0.75);
     white-space: nowrap;
+    cursor: pointer;
 }
 
 #app-title::after {
     content: none;
+}
+
+#app-title:focus-visible {
+    outline: 2px solid rgba(230, 126, 34, 0.55);
+    outline-offset: 6px;
+    border-radius: 10px;
 }
 
 @media (max-width: 900px) {
@@ -1252,6 +1264,75 @@ select:focus, input:focus {
     isolation: isolate;
 }
 
+.menu-builder-card__title-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.menu-builder-toggle {
+    width: 40px;
+    height: 40px;
+    border: 1px solid #d5e0e8;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #fbfdff 0%, #f1f6fb 100%);
+    color: #365268;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.menu-builder-toggle:hover {
+    transform: translateY(-1px);
+    border-color: rgba(52, 128, 185, 0.38);
+    color: #2980b9;
+    box-shadow: 0 8px 20px rgba(36, 64, 92, 0.08);
+}
+
+.menu-builder-card.is-collapsed .menu-builder-toggle {
+    background: #2c3e50;
+    border-color: #2c3e50;
+    color: #ffffff;
+}
+
+.menu-builder-body {
+    margin-top: 8px;
+}
+
+.menu-builder-card.is-dragging .menu-manual-add {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.menu-builder-card.is-dragging {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.menu-builder-card.is-dragging .menu-builder-body {
+    pointer-events: none;
+}
+
+.menu-builder-card.is-dragging .strategy-panel-header,
+.menu-builder-card.is-dragging .menu-builder-toggle,
+.menu-builder-card.is-dragging .menu-builder-half,
+.menu-builder-card.is-dragging .menu-builder-half * {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.menu-builder-card.is-dragging .menu-drop-zone,
+.menu-builder-card.is-dragging .menu-drop-zone * {
+    pointer-events: auto;
+}
+
+.menu-source-item.is-touch-dragging,
+.menu-drop-zone__item.is-touch-dragging {
+    opacity: 0.72;
+}
+
 .menu-builder-card .strategy-panel-header {
     margin-bottom: 3px;
     margin-top: 3px;
@@ -1756,6 +1837,19 @@ select:focus, input:focus {
     align-items: center;
     gap: 10px;
     flex: 0 0 auto;
+}
+
+.video-section-card[data-section-scope="team_resource"] .video-section-card__header {
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.video-section-card[data-section-scope="team_resource"] .video-section-card__title {
+    flex: 1 1 auto;
+}
+
+.video-section-card[data-section-scope="team_resource"] .video-section-card__actions {
+    margin-left: auto;
 }
 
 .video-section-card__icon-btn {
@@ -2772,10 +2866,14 @@ html, body, .app-container {
 /* 讓第一欄（日期欄）更有存在感 */
 .court-table td:first-child {
     background-color: #f8f9fa;
-    border-right: 1px solid #d1d8e0; /* 日期跟場地之間加粗分隔線 */
+    border-right: 1px solid #d1d8e0; /* ???????????? */
+    font-size: 1rem;
+    line-height: 1.45;
+}
+.court-table td:first-child strong {
+    font-size: inherit;
 }
 
-/* 🌟 有借場的格子：奶油金搭配左側加粗色條 */
 .court-booked {
     background-color: #fff9db !important;
     color: #2d3436 !important;
@@ -2812,10 +2910,25 @@ html, body, .app-container {
 
 .court-weekday-filter {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     gap: 10px;
     margin-bottom: 18px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x;
+}
+
+.court-weekday-filter::-webkit-scrollbar {
+    display: none;
 }
 
 .court-weekday-filter__label {
@@ -2823,6 +2936,7 @@ html, body, .app-container {
     font-weight: 700;
     color: #2c3e50;
     margin-right: 4px;
+    flex: 0 0 auto;
 }
 
 .court-weekday-option {
@@ -2837,6 +2951,7 @@ html, body, .app-container {
     cursor: pointer;
     user-select: none;
     transition: all 0.2s ease;
+    flex: 0 0 auto;
 }
 
 .court-weekday-option:hover {
@@ -3009,6 +3124,7 @@ html, body, .app-container {
 .strategy-filter-row .court-weekday-filter {
     margin-bottom: 0;
     align-self: center;
+    flex: 1 1 100%;
 }
 
 .strategy-filter-row .strategy-month-controls,
@@ -3376,4 +3492,810 @@ html, body, .app-container {
 .court-table td:nth-child(2),
 .court-table td:nth-child(3) {
     width: calc((100% - 220px) / 2);
+}
+
+@media (max-width: 900px) {
+    :root {
+        --sidebar-width: min(82vw, 320px);
+        --showcase-open-left-inset: 14%;
+        --showcase-open-right-inset: 14%;
+        --showcase-closed-left-inset: 6%;
+        --showcase-closed-right-inset: 6%;
+    }
+
+    html,
+    body,
+    .app-container,
+    .main-content {
+        height: 100dvh;
+    }
+
+    .app-container.sidebar-pinned .main-content {
+        margin-left: 0;
+    }
+
+    .top-bar {
+        min-height: 64px;
+        height: 64px;
+        padding: 0 16px 0 72px;
+    }
+
+    .sidebar-toggle-wrapper {
+        top: 10px;
+        left: 12px;
+    }
+
+    .sidebar-toggle {
+        width: 48px;
+        height: 40px;
+        padding-right: 0;
+    }
+
+    .sidebar-toggle__bar {
+        width: 24px;
+    }
+
+    #app-title {
+        position: static;
+        transform: none;
+        margin: 0;
+        max-width: calc(100vw - 168px);
+        font-size: 1rem;
+        letter-spacing: 0.08em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .user-profile {
+        gap: 8px;
+        min-width: 0;
+    }
+
+    #guest-zone,
+    #user-zone {
+        gap: 8px !important;
+    }
+
+    .role-badge {
+        display: none;
+    }
+
+    .avatar-dropdown-menu {
+        right: -6px;
+        min-width: min(280px, calc(100vw - 24px));
+    }
+
+    .content-wrapper {
+        padding: 20px 16px 24px;
+        gap: 24px;
+    }
+
+    .section-title {
+        font-size: 1.18rem;
+        line-height: 1.2;
+    }
+
+    .card,
+    .announcement-card,
+    .menu-card,
+    .video-control-card {
+        border-radius: 16px;
+    }
+
+    .section-title {
+        margin-bottom: 18px;
+    }
+
+    .strategy-panel-title,
+    .menu-card .strategy-panel-title,
+    .practice-menu-board__summary h4,
+    .menu-result-summary h4,
+    .menu-result-card h4 {
+        font-size: 1.18rem;
+        line-height: 1.2;
+    }
+
+    .content-section .card h3:not(.section-title),
+    .content-section .card h4:not(.strategy-panel-title),
+    .announcement-card__copy h3,
+    .video-section-card__header h4,
+    .video-control-block__header h4,
+    .login-card h3 {
+        font-size: 1.02rem;
+        line-height: 1.28;
+    }
+
+    .content-section .card,
+    .announcement-card,
+    .video-section-card,
+    .video-card,
+    .login-card {
+        font-size: 0.92rem;
+    }
+
+    .content-section .card p,
+    .content-section .card li,
+    .content-section .card label,
+    .content-section .card input,
+    .content-section .card select,
+    .content-section .card textarea,
+    .announcement-item,
+    .announcement-card__copy p,
+    .announcement-card__body > p,
+    .video-card h5,
+    .video-card p,
+    .video-control-input,
+    .menu-editor-item strong,
+    .menu-editor-item span,
+    .court-history-chip strong,
+    .court-history-chip button,
+    .court-edit-field input,
+    .court-edit-field select,
+    .court-edit-field label,
+    .court-edit-checkbox {
+        font-size: 0.88rem;
+    }
+
+    .menu-filter-title,
+    .menu-source-item__title {
+        font-size: 0.9rem;
+    }
+
+    .menu-result-summary p,
+    .practice-menu-board__summary p {
+        font-size: 0.76rem;
+    }
+
+    .menu-builder-card {
+        top: 42px;
+        padding: 6px 12px 4px;
+    }
+
+    .menu-builder-card .strategy-panel-header {
+        margin-bottom: 0;
+        padding: 0;
+    }
+
+    .menu-builder-toggle {
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+    }
+
+    .menu-builder-body {
+        max-height: none;
+        overflow: visible;
+        padding-right: 0;
+        margin-top: 1px;
+    }
+
+    .menu-builder-layout {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .menu-builder-half {
+        height: min(34.5dvh, 300px);
+        max-height: min(34.5dvh, 300px);
+        overflow: hidden;
+    }
+
+    .menu-drop-zone {
+        min-height: 0;
+        max-height: none;
+        height: 100%;
+        overflow-y: auto;
+    }
+
+    .menu-manual-add {
+        gap: 4px;
+    }
+
+    .menu-manual-add input {
+        padding: 5px 8px;
+        font-size: 0.76rem;
+        border-radius: 8px;
+    }
+
+    .menu-manual-add .court-btn {
+        height: 28px;
+        padding: 4px 10px;
+        font-size: 0.72rem;
+        border-radius: 999px;
+    }
+
+    .menu-source-item__actions {
+        gap: 6px;
+        flex-wrap: nowrap;
+    }
+
+    .menu-source-item__actions .court-btn {
+        min-width: 0;
+        height: 30px;
+        padding: 4px 8px;
+        font-size: 0.72rem;
+        flex: 0 0 auto;
+    }
+
+    .menu-source-item__meta {
+        font-size: 0.76rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .primary-btn-sm,
+    .secondary-btn-sm,
+    .primary-btn,
+    .secondary-btn,
+    .court-btn,
+    .tab-btn,
+    .court-weekday-option,
+    .menu-badge,
+    .menu-source-item__badge {
+        font-size: 0.82rem;
+    }
+
+    .section-header-row {
+        align-items: stretch;
+        gap: 14px;
+    }
+
+    .upload-area {
+        width: 100%;
+        align-items: stretch;
+        gap: 10px;
+        padding: 12px;
+        flex-wrap: wrap;
+    }
+
+    .upload-hint {
+        width: 100%;
+        border-right: 0;
+        padding-right: 0;
+        padding-bottom: 4px;
+    }
+
+    .file-status {
+        width: 100%;
+        text-align: left;
+    }
+
+    .tabs-container {
+        gap: 10px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        white-space: nowrap;
+        padding-bottom: 12px;
+        scrollbar-width: none;
+    }
+
+    .tabs-container::-webkit-scrollbar {
+        display: none;
+    }
+
+    .tab-btn {
+        flex: 0 0 auto;
+        font-size: 0.96rem;
+        padding: 6px 8px;
+    }
+
+    .strategy-month-controls,
+    .strategy-range-controls,
+    .strategy-weight-controls,
+    .strategy-date-manager__controls,
+    .menu-import-panel__controls,
+    .menu-editor-actions,
+    .video-section-card__header,
+    .video-section-card__actions,
+    .court-history-manager__header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .court-weekday-filter {
+        align-items: center;
+        flex-direction: row;
+    }
+
+    .strategy-month-controls,
+    .strategy-range-controls,
+    .strategy-weight-controls {
+        width: 100%;
+    }
+
+    .strategy-month-controls label,
+    .strategy-range-controls label,
+    .strategy-weight-controls label,
+    .strategy-date-manager__field {
+        width: 100%;
+    }
+
+    .strategy-month-controls input,
+    .strategy-range-controls input,
+    .strategy-weight-controls input,
+    .strategy-date-manager__field input,
+    .video-control-input,
+    .menu-import-panel input[type="file"],
+    .menu-import-panel .court-btn,
+    .menu-editor-actions .court-btn,
+    .strategy-date-manager__controls .court-btn {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .video-add-grid,
+    .team-resource-section-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .video-control-block__header,
+    .strategy-panel-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .video-section-card[data-section-scope="team_resource"] .video-section-card__header {
+        align-items: center;
+        flex-direction: row;
+        justify-content: space-between;
+        gap: 10px;
+    }
+
+    .video-section-card[data-section-scope="team_resource"] .video-section-card__actions {
+        width: auto;
+        margin-left: auto;
+        flex: 0 0 auto;
+    }
+
+    .video-section-card__header {
+        padding: 16px;
+    }
+
+    .video-section-card__body,
+    .video-section-card__scroller {
+        padding-bottom: 2px;
+    }
+
+    .photo-gallery {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+
+    .court-table th {
+        padding: 14px 8px;
+        font-size: 0.88rem;
+        letter-spacing: 0.02em;
+        line-height: 1.45;
+    }
+
+    .court-table td {
+        padding: 14px 8px;
+        font-size: 0.92rem;
+    }
+
+    .court-table td:first-child {
+        font-size: 0.76rem;
+        line-height: 1.3;
+    }
+
+    .slot-line1 {
+        font-size: 0.88rem;
+    }
+
+    .slot-line2,
+    .dept-name,
+    .strategy-summary,
+    .strategy-note,
+    .strategy-split-rate {
+        font-size: 0.76rem;
+    }
+
+    .probability-cell {
+        padding: 10px 6px;
+    }
+
+    .probability-cell strong,
+    .strategy-bid {
+        font-size: 0.82rem;
+    }
+
+    .probability-cell small {
+        font-size: 0.72rem;
+    }
+
+    .showcase-slider-container {
+        width: 100vw;
+        left: 50%;
+        transform: translateX(-50%);
+        margin: 0 0 24px;
+        border-radius: 0;
+        overflow: hidden;
+        height: 240px;
+    }
+
+    .sidebar-pin-btn--sidebar {
+        display: none !important;
+    }
+
+    .showcase-crop-modal__dialog,
+    .video-notes-modal__dialog {
+        width: min(100vw - 20px, 760px);
+        max-height: calc(100dvh - 20px);
+    }
+
+    #schedule .card.auth-only.captain-only {
+        padding: 16px !important;
+        gap: 12px !important;
+    }
+
+    .schedule-scraper-card h4 {
+        flex-basis: 100%;
+        margin-right: 0 !important;
+    }
+
+    #schedule .card.auth-only.captain-only > div[style*="width: 1px"] {
+        display: none !important;
+    }
+
+    .schedule-scraper-card .schedule-date-field {
+        flex: 1 1 calc(50% - 6px);
+        min-width: 0;
+    }
+
+    .schedule-scraper-card .schedule-date-field input {
+        width: 100% !important;
+    }
+
+    .schedule-scraper-card .schedule-month-btn {
+        flex: 1 1 calc(50% - 6px);
+        width: calc(50% - 6px) !important;
+        margin-right: 0 !important;
+    }
+
+    #schedule .card.auth-only.captain-only button {
+        width: 100% !important;
+    }
+
+    .schedule-scraper-card .schedule-month-btn {
+        width: calc(50% - 6px) !important;
+    }
+
+    #schedule .card.auth-only.captain-only button {
+        margin-right: 0 !important;
+    }
+
+    #schedule .card.auth-only.captain-only > div[style*="white-space: nowrap"] {
+        width: 100%;
+        flex-wrap: wrap !important;
+        white-space: normal !important;
+    }
+}
+
+@media (max-width: 640px) {
+    .sidebar {
+        padding: 22px 12px 18px;
+    }
+
+    .menu-list li {
+        padding: 12px 16px;
+        margin-bottom: 6px;
+    }
+
+    .top-bar {
+        padding: 0 12px 0 64px;
+    }
+
+    #app-title {
+        max-width: calc(100vw - 132px);
+        font-size: 0.92rem;
+    }
+
+    .section-title {
+        font-size: 1.02rem;
+    }
+
+    .strategy-panel-title,
+    .menu-card .strategy-panel-title,
+    .practice-menu-board__summary h4,
+    .menu-result-summary h4,
+    .menu-result-card h4 {
+        font-size: 0.92rem;
+    }
+
+    .content-section .card h3:not(.section-title),
+    .content-section .card h4:not(.strategy-panel-title),
+    .announcement-card__copy h3,
+    .video-section-card__header h4,
+    .video-control-block__header h4,
+    .login-card h3 {
+        font-size: 0.92rem;
+        line-height: 1.24;
+    }
+
+    .content-section .card,
+    .announcement-card,
+    .video-section-card,
+    .video-card,
+    .login-card {
+        font-size: 0.86rem;
+    }
+
+    .content-section .card p,
+    .content-section .card li,
+    .content-section .card label,
+    .content-section .card input,
+    .content-section .card select,
+    .content-section .card textarea,
+    .announcement-item,
+    .announcement-card__copy p,
+    .announcement-card__body > p,
+    .video-card h5,
+    .video-card p,
+    .video-control-input,
+    .menu-editor-item strong,
+    .menu-editor-item span,
+    .court-history-chip strong,
+    .court-history-chip button,
+    .court-edit-field input,
+    .court-edit-field select,
+    .court-edit-field label,
+    .court-edit-checkbox {
+        font-size: 0.82rem;
+    }
+
+    .menu-filter-title,
+    .menu-source-item__title {
+        font-size: 0.82rem;
+    }
+
+    .menu-builder-card {
+        top: -4px;
+        padding: 4px 10px 3px;
+    }
+
+    .video-section-card[data-section-scope="team_resource"] .video-section-card__header,
+    .video-section-card[data-section-scope="video"] .video-section-card__header {
+        align-items: center;
+        flex-direction: row;
+        justify-content: flex-start;
+        gap: 8px;
+        padding: 14px 16px;
+        flex-wrap: wrap;
+    }
+
+    .video-section-card[data-section-scope="team_resource"] .video-section-card__title,
+    .video-section-card[data-section-scope="video"] .video-section-card__title {
+        gap: 8px;
+        flex: 1 1 100%;
+    }
+
+    .video-section-card[data-section-scope="team_resource"] .video-section-card__meta {
+        gap: 6px;
+        padding: 6px 10px;
+        font-size: 0.74rem;
+    }
+
+    .video-section-card[data-section-scope="team_resource"] .video-section-card__meta small {
+        font-size: 0.72rem;
+    }
+
+    .video-section-card[data-section-scope="team_resource"] .resource-visibility-chip {
+        padding: 6px 10px;
+        font-size: 0.7rem;
+    }
+
+    .video-section-card[data-section-scope="team_resource"] .video-section-card__actions,
+    .video-section-card[data-section-scope="video"] .video-section-card__actions {
+        width: 100%;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        margin-left: 0;
+        flex: 1 1 100%;
+    }
+
+    .video-section-card[data-section-scope="team_resource"] .video-section-card__icon-btn,
+    .video-section-card[data-section-scope="team_resource"] .video-section-card__delete,
+    .video-section-card[data-section-scope="video"] .video-section-card__icon-btn,
+    .video-section-card[data-section-scope="video"] .video-section-card__delete {
+        width: 100%;
+        min-width: 0;
+        justify-content: center;
+    }
+
+    .video-section-card[data-section-scope="team_resource"] .video-section-card__icon-btn,
+    .video-section-card[data-section-scope="video"] .video-section-card__icon-btn {
+        height: 40px;
+        border-radius: 12px;
+    }
+
+    .video-section-card[data-section-scope="team_resource"] .video-section-card__delete,
+    .video-section-card[data-section-scope="video"] .video-section-card__delete {
+        padding: 0 10px;
+        height: 40px;
+        border-radius: 12px;
+    }
+
+    .menu-builder-body {
+        max-height: none;
+        margin-top: 0;
+    }
+
+    .menu-builder-layout {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 5px;
+    }
+
+    .menu-builder-half {
+        height: min(33dvh, 264px);
+        max-height: min(33dvh, 264px);
+    }
+
+    .menu-manual-add {
+        gap: 4px;
+    }
+
+    .menu-manual-add input {
+        padding: 4px 8px;
+        font-size: 0.74rem;
+    }
+
+    .menu-manual-add .court-btn {
+        height: 26px;
+        padding: 4px 8px;
+        font-size: 0.7rem;
+    }
+
+    .menu-source-item__actions {
+        gap: 4px;
+        flex-wrap: nowrap;
+    }
+
+    .menu-source-item__actions .court-btn {
+        min-width: 0;
+        height: 26px;
+        padding: 3px 7px;
+        font-size: 0.68rem;
+        flex: 0 0 auto;
+    }
+
+    .menu-source-item__meta {
+        font-size: 0.72rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .primary-btn-sm,
+    .secondary-btn-sm,
+    .primary-btn,
+    .secondary-btn,
+    .court-btn {
+        justify-content: center;
+        font-size: 0.78rem;
+    }
+
+    .tab-btn,
+    .court-weekday-option,
+    .menu-badge,
+    .menu-source-item__badge,
+    .menu-result-summary__eyebrow,
+    .menu-result-card__eyebrow,
+    .upload-hint,
+    .file-status {
+        font-size: 0.72rem;
+    }
+
+    .content-wrapper {
+        padding: 16px 12px 20px;
+    }
+
+    .card {
+        padding: 16px;
+    }
+
+    .photo-gallery {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .gallery-img {
+        height: 130px;
+    }
+
+    .showcase-slider-container {
+        width: 100vw;
+        left: 50%;
+        transform: translateX(-50%);
+        height: 200px;
+        margin-bottom: 20px;
+    }
+
+    .showcase-crop-modal__dialog,
+    .video-notes-modal__dialog {
+        width: calc(100vw - 12px);
+        max-height: calc(100dvh - 12px);
+        border-radius: 16px;
+    }
+
+    .showcase-crop-modal__header,
+    .showcase-crop-modal__actions,
+    .video-notes-modal__header,
+    .video-notes-modal__actions,
+    .video-notes-modal__toolbar {
+        padding-left: 14px;
+        padding-right: 14px;
+    }
+
+    .showcase-crop-modal__controls,
+    .showcase-crop-nudge,
+    .video-notes-list {
+        padding-left: 14px;
+        padding-right: 14px;
+    }
+
+    .court-table th {
+        padding: 12px 6px;
+        font-size: 0.8rem;
+        line-height: 1.35;
+    }
+
+    .court-table td {
+        padding: 12px 6px;
+        font-size: 0.84rem;
+    }
+
+    .court-table td:first-child {
+        font-size: 0.68rem;
+        line-height: 1.22;
+    }
+
+    .slot-line1 {
+        font-size: 0.72rem;
+    }
+
+    .slot-line2,
+    .dept-name,
+    .strategy-summary,
+    .strategy-note,
+    .strategy-split-rate,
+    .probability-cell small {
+        font-size: 0.62rem;
+        line-height: 1.2;
+    }
+
+    .probability-cell strong,
+    .strategy-bid {
+        font-size: 0.76rem;
+    }
+
+    .court-table th:first-child,
+    .court-table td:first-child {
+        width: 120px;
+        min-width: 120px;
+    }
+
+    .app-footer {
+        padding: 18px 12px !important;
+        width: calc(100% + 24px) !important;
+        margin-left: -12px !important;
+        font-size: 0.8rem !important;
+    }
+
+    #footer-contacts {
+        font-size: 0.78rem !important;
+        line-height: 1.45 !important;
+    }
+
+    #footer-contacts strong,
+    #footer-contacts a,
+    #footer-contacts span {
+        font-size: inherit !important;
+    }
+
+    .footer-copyright {
+        font-size: 0.72rem !important;
+        line-height: 1.5 !important;
+    }
 }
