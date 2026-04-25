@@ -277,8 +277,7 @@ body.dragging-menu-item {
     transform: translate(0, -50%);
 }
 
-.sidebar-pin-btn,
-.sidebar-theme-toggle {
+.sidebar-pin-btn {
     width: 38px;
     height: 38px;
     border: 1px solid rgba(44, 62, 80, 0.14);
@@ -309,89 +308,26 @@ body.dragging-menu-item {
     position: static;
 }
 
-.sidebar-pin-btn:hover,
-.sidebar-theme-toggle:hover {
+.sidebar-pin-btn:hover {
     transform: translateY(-1px);
     color: var(--accent-color);
     border-color: rgba(230, 126, 34, 0.35);
 }
 
-.sidebar-pin-btn.active,
-.sidebar-theme-toggle.active {
+.sidebar-pin-btn.active {
     background: var(--accent-color);
     color: #ffffff;
     border-color: var(--accent-color);
 }
 
-.sidebar-theme-panel {
-    position: absolute;
-    left: 0;
-    bottom: 52px;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.96);
-    border: 1px solid rgba(213, 224, 232, 0.92);
-    box-shadow: 0 14px 32px rgba(12, 24, 33, 0.16);
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transform: translateY(8px);
-    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
-}
-
-.sidebar-tools.theme-open .sidebar-theme-panel {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-    transform: translateY(0);
-}
-
-.sidebar-theme-option {
-    position: relative;
-    width: 28px;
-    height: 28px;
-    border-radius: 999px;
-    border: 2px solid rgba(255, 255, 255, 0.95);
-    background: var(--theme-primary);
-    box-shadow: 0 0 0 1px rgba(38, 54, 66, 0.16);
-    cursor: pointer;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.sidebar-theme-option::after {
-    content: '';
-    position: absolute;
-    right: -1px;
-    bottom: -1px;
-    width: 10px;
-    height: 10px;
-    border-radius: 999px;
-    background: var(--theme-accent);
-    border: 2px solid rgba(255, 255, 255, 0.92);
-}
-
-.sidebar-theme-option:hover {
-    transform: translateY(-1px) scale(1.04);
-}
-
-.sidebar-theme-option.active {
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.96), 0 0 0 5px var(--accent-color);
-}
-
 .app-container:not(.sidebar-toggled) .sidebar-pin-btn,
-.app-container:not(.sidebar-toggled) .sidebar-theme-toggle,
-.app-container.sidebar-pinned .sidebar-pin-btn,
-.app-container.sidebar-pinned .sidebar-theme-toggle {
+.app-container.sidebar-pinned .sidebar-pin-btn {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
 }
 
-.sidebar-toggle-wrapper .sidebar-pin-btn,
-.sidebar-toggle-wrapper .sidebar-theme-toggle {
+.sidebar-toggle-wrapper .sidebar-pin-btn {
     display: none;
 }
 
@@ -4149,14 +4085,6 @@ html, body, .app-container {
     .sidebar-tools {
         left: 12px;
         bottom: 12px;
-    }
-
-    .sidebar-theme-panel {
-        bottom: 48px;
-        left: 0;
-        max-width: calc(100vw - 44px);
-        gap: 6px;
-        padding: 8px 10px;
     }
 
     .showcase-crop-modal__dialog,

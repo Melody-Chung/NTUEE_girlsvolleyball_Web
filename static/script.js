@@ -5,85 +5,6 @@
 const LAST_SECTION_KEY = 'vbt_last_section';
 const SIDEBAR_TOGGLED_KEY = 'vbt_sidebar_toggled';
 const SIDEBAR_PINNED_KEY = 'vbt_sidebar_pinned';
-const THEME_KEY = 'vbt_theme';
-const THEME_PRESETS = {
-    classic: {
-        mode: 'light',
-        primary: '#2c3e50',
-        accent: '#e67e22',
-        accentHighlight: '#f0a24b',
-        accentSoftText: '#b96a1c',
-        interactiveColor: '#2980b9',
-        interactiveStrong: '#3f86b8',
-        resourceDocStart: '#2563eb',
-        resourceDocEnd: '#1d4ed8',
-        resourceSheetStart: '#16a34a',
-        resourceSheetEnd: '#15803d',
-        bg: '#f0f2f5',
-        card: '#ffffff',
-        textMain: '#2d3436',
-        textMuted: '#636e72',
-        sidebarStart: '#2c3e50',
-        sidebarEnd: '#1a252f'
-    },
-    midnight: {
-        mode: 'dark',
-        primary: '#aab4c3',
-        accent: '#38bdf8',
-        accentHighlight: '#7dd3fc',
-        accentSoftText: '#0f5f86',
-        interactiveColor: '#60a5fa',
-        interactiveStrong: '#3b82f6',
-        resourceDocStart: '#0f172a',
-        resourceDocEnd: '#2563eb',
-        resourceSheetStart: '#0f766e',
-        resourceSheetEnd: '#14b8a6',
-        bg: '#16181d',
-        card: '#23262d',
-        textMain: '#e0e3e7',
-        textMuted: '#a9b0ba',
-        sidebarStart: '#0f172a',
-        sidebarEnd: '#020617'
-    },
-    forest: {
-        mode: 'light',
-        primary: '#2d5d4f',
-        accent: '#8fcf6a',
-        accentHighlight: '#b8e698',
-        accentSoftText: '#4d7b33',
-        interactiveColor: '#4c9b8a',
-        interactiveStrong: '#2f7f6d',
-        resourceDocStart: '#2d5d4f',
-        resourceDocEnd: '#4c9b8a',
-        resourceSheetStart: '#6aa84f',
-        resourceSheetEnd: '#8fcf6a',
-        bg: '#f0f2f5',
-        card: '#ffffff',
-        textMain: '#2d3436',
-        textMuted: '#636e72',
-        sidebarStart: '#2d5d4f',
-        sidebarEnd: '#21463b'
-    },
-    berry: {
-        mode: 'light',
-        primary: '#5a3d5c',
-        accent: '#d96cc2',
-        accentHighlight: '#f3a3e1',
-        accentSoftText: '#9d3b89',
-        interactiveColor: '#8b5cf6',
-        interactiveStrong: '#7c3aed',
-        resourceDocStart: '#5a3d5c',
-        resourceDocEnd: '#8b5cf6',
-        resourceSheetStart: '#d96cc2',
-        resourceSheetEnd: '#f3a3e1',
-        bg: '#f0f2f5',
-        card: '#ffffff',
-        textMain: '#2d3436',
-        textMuted: '#636e72',
-        sidebarStart: '#5a3d5c',
-        sidebarEnd: '#3d2940'
-    }
-};
 
 document.addEventListener('DOMContentLoaded', () => {
     // 1. 取得目前的權限狀態
@@ -103,9 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     initializeCompatibilityFallbacks();
-    applySavedTheme();
-    initThemeControls();
-
     const sidebarBackdrop = document.getElementById('sidebar-backdrop');
     if (sidebarBackdrop) {
         sidebarBackdrop.addEventListener('click', () => {
@@ -265,7 +183,6 @@ function closeSidebar() {
     }
     mainApp.classList.add('sidebar-toggled');
     sessionStorage.setItem(SIDEBAR_TOGGLED_KEY, 'true');
-    toggleThemePicker(false);
     syncSidebarPinButton();
     updateShowcaseCropGuide();
 }
@@ -310,39 +227,6 @@ function toggleSidebarPin() {
     updateShowcaseCropGuide();
 }
 
-function applyTheme(themeId, persist = true) {
-    const theme = THEME_PRESETS[themeId] || THEME_PRESETS.classic;
-    const root = document.documentElement;
-    root.style.setProperty('--primary-color', theme.primary);
-    root.style.setProperty('--accent-color', theme.accent);
-    root.style.setProperty('--accent-highlight', theme.accentHighlight);
-    root.style.setProperty('--accent-soft-bg', hexToRgba(theme.accent, 0.12));
-    root.style.setProperty('--accent-soft-text', theme.accentSoftText);
-    root.style.setProperty('--interactive-color', theme.interactiveColor);
-    root.style.setProperty('--interactive-soft', hexToRgba(theme.interactiveColor, 0.12));
-    root.style.setProperty('--interactive-strong', theme.interactiveStrong);
-    root.style.setProperty('--resource-doc-start', theme.resourceDocStart);
-    root.style.setProperty('--resource-doc-end', theme.resourceDocEnd);
-    root.style.setProperty('--resource-sheet-start', theme.resourceSheetStart);
-    root.style.setProperty('--resource-sheet-end', theme.resourceSheetEnd);
-    root.style.setProperty('--bg-color', theme.bg);
-    root.style.setProperty('--card-bg', theme.card);
-    root.style.setProperty('--text-main', theme.textMain);
-    root.style.setProperty('--text-muted', theme.textMuted);
-    root.style.setProperty('--sidebar-start', theme.sidebarStart);
-    root.style.setProperty('--sidebar-end', theme.sidebarEnd);
-    root.dataset.theme = themeId in THEME_PRESETS ? themeId : 'classic';
-    root.dataset.themeMode = theme.mode || 'light';
-    if (persist) {
-        localStorage.setItem(THEME_KEY, root.dataset.theme);
-    }
-    syncThemeButtons();
-}
-
-function applySavedTheme() {
-    applyTheme(localStorage.getItem(THEME_KEY) || 'classic', false);
-}
-
 function hexToRgba(hex, alpha) {
     const normalized = String(hex || '').replace('#', '').trim();
     if (!/^[\da-fA-F]{6}$/.test(normalized)) return `rgba(0, 0, 0, ${alpha})`;
@@ -369,39 +253,6 @@ function mixHex(colorA, colorB, ratio) {
         return Math.round(first + ((second - first) * weight)).toString(16).padStart(2, '0');
     };
     return `#${mix(0)}${mix(2)}${mix(4)}`;
-}
-
-function selectTheme(themeId) {
-    applyTheme(themeId, true);
-    toggleThemePicker(false);
-}
-
-function toggleThemePicker(forceState) {
-    const tools = document.getElementById('sidebar-tools');
-    const toggleButton = document.getElementById('sidebar-theme-toggle');
-    if (!tools || !toggleButton) return;
-    const nextState = typeof forceState === 'boolean' ? forceState : !tools.classList.contains('theme-open');
-    tools.classList.toggle('theme-open', nextState);
-    toggleButton.classList.toggle('active', nextState);
-    toggleButton.setAttribute('aria-expanded', String(nextState));
-}
-
-function syncThemeButtons() {
-    const activeTheme = document.documentElement.dataset.theme || 'classic';
-    document.querySelectorAll('.sidebar-theme-option').forEach((button) => {
-        const isActive = button.dataset.themeId === activeTheme;
-        button.classList.toggle('active', isActive);
-        button.setAttribute('aria-pressed', String(isActive));
-    });
-}
-
-function initThemeControls() {
-    document.addEventListener('click', (event) => {
-        const tools = document.getElementById('sidebar-tools');
-        if (!tools || !tools.classList.contains('theme-open')) return;
-        if (tools.contains(event.target)) return;
-        toggleThemePicker(false);
-    });
 }
 
 function syncSidebarPinButton() {
@@ -3771,7 +3622,7 @@ function getDefaultLotteryWeekdays() {
 }
 
 function getDefaultStrategyWeekdays() {
-    return [1, 3];
+    return [0, 1, 2, 3, 4, 5, 6];
 }
 
 function getSelectedLotteryWeekdays() {
