@@ -9,14 +9,6 @@ html, body {
     height: 100%;
 }
 
-.app-container {
-    display: flex;
-    width: 100vw;
-    height: 100vh;
-    margin: 0;
-    padding: 0;
-}
-
 /* ==========================================================================
    1. Variables & Global Reset
    ========================================================================== */
@@ -70,7 +62,11 @@ body.dragging-menu-item {
 
 .app-container {
     display: flex;
+    width: 100vw;
+    height: 100vh;
     min-height: 100vh;
+    margin: 0;
+    padding: 0;
 }
 
 /* ==========================================================================
@@ -158,6 +154,10 @@ body.dragging-menu-item {
     overflow: hidden;   /* 新增：防止整個網頁出現大捲軸 */
 }
 
+.main-content {
+    transition: margin-left 0.3s ease;
+}
+
 .app-container.sidebar-pinned .main-content {
     margin-left: var(--sidebar-width);
 }
@@ -165,10 +165,6 @@ body.dragging-menu-item {
 .app-container.sidebar-pinned .sidebar-backdrop {
     opacity: 0;
     pointer-events: none;
-}
-
-.main-content {
-    transition: margin-left 0.3s ease;
 }
 
 .content-wrapper {
@@ -252,31 +248,6 @@ body.dragging-menu-item {
     transition: transform 0.3s ease;
 }
 
-.sidebar-toggle-hint {
-    position: absolute;
-    left: 62px;
-    top: 50%;
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 14px;
-    border-radius: 999px;
-    background: rgba(44, 62, 80, 0.68);
-    color: rgba(255, 255, 255, 0.95);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
-    white-space: nowrap;
-    pointer-events: none;
-    opacity: 0;
-    transform: translate(8px, -50%);
-    transition: opacity 0.25s ease, transform 0.25s ease;
-    z-index: 120;
-}
-
-.sidebar-toggle-hint.visible {
-    opacity: 1;
-    transform: translate(0, -50%);
-}
-
 .sidebar-pin-btn {
     width: 38px;
     height: 38px;
@@ -325,49 +296,6 @@ body.dragging-menu-item {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
-}
-
-.sidebar-toggle-wrapper .sidebar-pin-btn {
-    display: none;
-}
-
-.top-bar {
-    z-index: 90;
-}
-
-.sidebar-toggle-hint__arrow {
-    font-size: 1.4rem;
-    color: rgba(255, 255, 255, 0.72);
-    animation: sidebar-hint-pulse 1.2s ease-in-out infinite;
-}
-
-.sidebar-toggle-hint__text {
-    font-size: 0.92rem;
-    font-weight: 600;
-    letter-spacing: 0.2px;
-}
-
-@keyframes sidebar-hint-pulse {
-    0%, 100% {
-        transform: translateX(0);
-        opacity: 0.7;
-    }
-    50% {
-        transform: translateX(-6px);
-        opacity: 1;
-    }
-}
-
-@media (max-width: 768px) {
-    .sidebar-toggle-hint {
-        left: 50px;
-        padding: 8px 12px;
-        gap: 8px;
-    }
-
-    .sidebar-toggle-hint__text {
-        font-size: 0.82rem;
-    }
 }
 
 #app-title {
@@ -751,148 +679,6 @@ body.dragging-menu-item {
         radial-gradient(circle at top right, rgba(230, 126, 34, 0.14), transparent 34%),
         linear-gradient(135deg, #fffaf4 0%, #fffdf9 52%, #ffffff 100%);
     box-shadow: 0 18px 38px rgba(210, 127, 49, 0.08);
-}
-
-html[data-theme-mode="dark"] body {
-    background-color: var(--bg-color);
-    color: var(--text-main);
-}
-
-html[data-theme-mode="dark"] .content-wrapper,
-html[data-theme-mode="dark"] .main-content {
-    background: var(--bg-color);
-}
-
-html[data-theme-mode="dark"] .top-bar,
-html[data-theme-mode="dark"] .app-footer {
-    background: rgba(26, 29, 35, 0.9) !important;
-    border-color: rgba(255, 255, 255, 0.08) !important;
-    color: var(--text-main);
-}
-
-html[data-theme-mode="dark"] .card,
-html[data-theme-mode="dark"] .video-card,
-html[data-theme-mode="dark"] .video-section-card,
-html[data-theme-mode="dark"] .announcement-card__body,
-html[data-theme-mode="dark"] .avatar-dropdown-menu,
-html[data-theme-mode="dark"] .login-card,
-html[data-theme-mode="dark"] .modal-content,
-html[data-theme-mode="dark"] .showcase-crop-modal__dialog,
-html[data-theme-mode="dark"] .video-notes-modal__dialog {
-    background: var(--card-bg);
-    color: var(--text-main);
-    border-color: rgba(255, 255, 255, 0.08);
-    box-shadow: none;
-}
-
-html[data-theme-mode="dark"] .announcement-card {
-    border-color: rgba(56, 189, 248, 0.16);
-    background:
-        radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 34%),
-        linear-gradient(135deg, #20242b 0%, #1d2127 52%, #1a1d23 100%);
-    box-shadow: none;
-}
-
-html[data-theme-mode="dark"] .video-preview,
-html[data-theme-mode="dark"] .video-control-input,
-html[data-theme-mode="dark"] .avatar-dropdown-menu::before,
-html[data-theme-mode="dark"] .video-section-card__meta,
-html[data-theme-mode="dark"] .video-section-card__icon-btn,
-html[data-theme-mode="dark"] .section-reorder-handle,
-html[data-theme-mode="dark"] .resource-visibility-chip,
-html[data-theme-mode="dark"] .video-section-card__delete,
-html[data-theme-mode="dark"] .menu-source-item,
-html[data-theme-mode="dark"] .menu-drop-zone__item,
-html[data-theme-mode="dark"] .practice-menu-item,
-html[data-theme-mode="dark"] .menu-builder-half,
-html[data-theme-mode="dark"] .menu-drop-zone,
-html[data-theme-mode="dark"] .menu-editor-item,
-html[data-theme-mode="dark"] .court-weekday-option,
-html[data-theme-mode="dark"] .lottery-slot-line {
-    background: #2a2e36;
-    color: var(--text-main);
-    border-color: rgba(255, 255, 255, 0.08);
-}
-
-html[data-theme-mode="dark"] .video-control-input,
-html[data-theme-mode="dark"] input,
-html[data-theme-mode="dark"] select,
-html[data-theme-mode="dark"] textarea {
-    background: #262a31;
-    color: var(--text-main);
-    border-color: rgba(255, 255, 255, 0.1);
-}
-
-html[data-theme-mode="dark"] .video-info p,
-html[data-theme-mode="dark"] .announcement-card__copy p,
-html[data-theme-mode="dark"] .announcement-card__body > p,
-html[data-theme-mode="dark"] .announcement-empty,
-html[data-theme-mode="dark"] .video-section-card__empty,
-html[data-theme-mode="dark"] .menu-source-item__meta,
-html[data-theme-mode="dark"] .strategy-summary,
-html[data-theme-mode="dark"] .strategy-note,
-html[data-theme-mode="dark"] .probability-cell small {
-    color: var(--text-muted);
-}
-
-html[data-theme-mode="dark"] .dropdown-item:hover,
-html[data-theme-mode="dark"] .video-section-card__icon-btn:hover,
-html[data-theme-mode="dark"] .section-reorder-handle:hover,
-html[data-theme-mode="dark"] .video-section-card__delete:hover {
-    background: #313641;
-}
-
-html[data-theme-mode="dark"] .announcement-card__body {
-    background: rgba(35, 38, 45, 0.92);
-    backdrop-filter: blur(8px);
-}
-
-html[data-theme-mode="dark"] .announcement-card__copy h3,
-html[data-theme-mode="dark"] .video-info h5,
-html[data-theme-mode="dark"] .video-section-card__title h4,
-html[data-theme-mode="dark"] .section-title,
-html[data-theme-mode="dark"] #display-name {
-    color: var(--text-main);
-}
-
-html[data-theme-mode="dark"] #app-title {
-    color: var(--text-main);
-    text-shadow: none;
-}
-
-html[data-theme-mode="dark"] .sidebar-toggle {
-    color: var(--text-main);
-}
-
-html[data-theme-mode="dark"] .role-badge {
-    background: rgba(170, 180, 195, 0.12);
-    color: var(--text-main);
-}
-
-html[data-theme-mode="dark"] .role-badge.captain {
-    background: rgba(56, 189, 248, 0.14);
-    color: #8edcff;
-    border-color: rgba(56, 189, 248, 0.24);
-}
-
-html[data-theme-mode="dark"] .gallery-img,
-html[data-theme-mode="dark"] .showcase-slide img,
-html[data-theme-mode="dark"] img:not(.avatar img) {
-    filter: brightness(0.8) contrast(1.08);
-}
-
-html[data-theme-mode="dark"] .primary-btn {
-    background: #334155;
-    color: #eef2f7;
-}
-
-html[data-theme-mode="dark"] .primary-btn:hover {
-    background: #3f4f63;
-    box-shadow: none;
-}
-
-html[data-theme-mode="dark"] .primary-btn-sm {
-    color: #eef2f7;
 }
 
 /* --- Buttons --- */
@@ -1937,6 +1723,24 @@ select:focus, input:focus {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 220px;
     gap: 12px;
+}
+
+#team-data .video-control-block {
+    width: 100%;
+}
+
+#team-data .team-resource-section-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    width: 100%;
+}
+
+#team-data .video-add-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+}
+
+#team-data .video-control-input {
+    min-width: 0;
 }
 
 .video-sections-container {
@@ -4157,7 +3961,7 @@ html, body, .app-container {
 
     #app-title {
         max-width: calc(100vw - 132px);
-        font-size: 0.92rem;
+        font-size: 1.08rem;
     }
 
     .section-title {
@@ -4225,18 +4029,26 @@ html, body, .app-container {
 
     .video-section-card[data-section-scope="team_resource"] .video-section-card__header,
     .video-section-card[data-section-scope="video"] .video-section-card__header {
-        align-items: center;
+        align-items: flex-start;
         flex-direction: row;
-        justify-content: flex-start;
-        gap: 8px;
+        justify-content: space-between;
+        gap: 12px;
         padding: 14px 16px;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
     }
 
     .video-section-card[data-section-scope="team_resource"] .video-section-card__title,
     .video-section-card[data-section-scope="video"] .video-section-card__title {
         gap: 8px;
-        flex: 1 1 100%;
+        flex: 1 1 0;
+        min-width: 0;
+        align-items: center;
+    }
+
+    .video-section-card[data-section-scope="team_resource"] .video-section-card__title h4,
+    .video-section-card[data-section-scope="video"] .video-section-card__title h4 {
+        flex: 0 1 auto;
+        min-width: 0;
     }
 
     .video-section-card[data-section-scope="team_resource"] .video-section-card__meta {
@@ -4256,34 +4068,54 @@ html, body, .app-container {
 
     .video-section-card[data-section-scope="team_resource"] .video-section-card__actions,
     .video-section-card[data-section-scope="video"] .video-section-card__actions {
-        width: 100%;
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: auto;
+        display: inline-flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-end;
         gap: 6px;
-        margin-left: 0;
-        flex: 1 1 100%;
+        margin-left: auto;
+        flex: 0 0 auto;
     }
 
     .video-section-card[data-section-scope="team_resource"] .video-section-card__icon-btn,
     .video-section-card[data-section-scope="team_resource"] .video-section-card__delete,
     .video-section-card[data-section-scope="video"] .video-section-card__icon-btn,
     .video-section-card[data-section-scope="video"] .video-section-card__delete {
-        width: 100%;
-        min-width: 0;
+        width: 34px;
+        min-width: 34px;
+        height: 34px;
+        padding: 0;
         justify-content: center;
     }
 
     .video-section-card[data-section-scope="team_resource"] .video-section-card__icon-btn,
     .video-section-card[data-section-scope="video"] .video-section-card__icon-btn {
-        height: 40px;
-        border-radius: 12px;
+        border-radius: 10px;
     }
 
     .video-section-card[data-section-scope="team_resource"] .video-section-card__delete,
     .video-section-card[data-section-scope="video"] .video-section-card__delete {
-        padding: 0 10px;
-        height: 40px;
-        border-radius: 12px;
+        border: 1px solid #f0d4d0;
+        border-radius: 10px;
+        background: #fff5f5;
+        color: var(--danger-color);
+        font-size: 0;
+        line-height: 1;
+    }
+
+    .video-section-card[data-section-scope="team_resource"] .video-section-card__delete::before,
+    .video-section-card[data-section-scope="video"] .video-section-card__delete::before {
+        content: '\f1f8';
+        font-family: "Font Awesome 5 Free";
+        font-weight: 900;
+        font-size: 0.9rem;
+    }
+
+    .video-section-card[data-section-scope="team_resource"] .video-section-card__delete:hover,
+    .video-section-card[data-section-scope="video"] .video-section-card__delete:hover {
+        background: #fdecec;
+        color: var(--danger-color-strong);
     }
 
     .menu-builder-body {

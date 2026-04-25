@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // 1. Initialization and Layout Navigation
 // ==========================================
 
@@ -567,7 +567,7 @@ async function loadPendingUsers() {
                     </div>
                     <div style="display: flex; gap: 10px;">
                         <button onclick="approveUser(${user.id}, 'approve')" class="primary-btn-sm" style="background: var(--interactive-color);">通過</button>
-                        <button onclick="approveUser(${user.id}, 'reject')" class="primary-btn-sm" style="background: var(--accent-color);">拒絕</button>
+                        <button onclick="approveUser(${user.id}, 'reject')" class="primary-btn-sm" style="background: var(--danger-color);">拒絕</button>
                     </div>
                 </li>
             `;
@@ -629,7 +629,7 @@ async function loadTeamMembers() {
                             <option value="member" ${isMember}>隊員</option>
                             <option value="captain" ${isCaptain}>隊長</option>
                         </select>
-                        <button onclick="deleteUser(${user.id})" class="primary-btn-sm" style="background: var(--accent-color);">刪除</button>
+                        <button onclick="deleteUser(${user.id})" class="primary-btn-sm" style="background: var(--danger-color);">刪除</button>
                     </div>
                 </li>
             `;
