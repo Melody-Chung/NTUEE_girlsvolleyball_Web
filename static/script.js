@@ -5,6 +5,7 @@
 const LAST_SECTION_KEY = 'vbt_last_section';
 const SIDEBAR_TOGGLED_KEY = 'vbt_sidebar_toggled';
 const SIDEBAR_PINNED_KEY = 'vbt_sidebar_pinned';
+const THEME_MODE_KEY = 'vbt_theme_mode';
 
 document.addEventListener('DOMContentLoaded', () => {
     // 1. 取得目前的權限狀態
@@ -14,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 2. 執行權限 UI 刷新 (確保 Guest, Member, Captain 看到的都不一樣)
     refreshUIByRole(savedRole);
     applySavedSidebarState();
+    applySavedThemeMode();
 
     // 3. 預設顯示首頁
     showSection(getInitialSection(savedRole));
@@ -268,6 +270,49 @@ function syncSidebarPinButton() {
     });
 }
 
+function applyThemeMode(mode) {
+    const resolvedMode = mode === 'dark' ? 'dark' : 'light';
+    document.documentElement.dataset.themeMode = resolvedMode;
+    localStorage.setItem(THEME_MODE_KEY, resolvedMode);
+    syncThemeModeButton();
+    refreshThemeSensitiveViews();
+}
+
+function applySavedThemeMode() {
+    const savedMode = localStorage.getItem(THEME_MODE_KEY);
+    applyThemeMode(savedMode === 'dark' ? 'dark' : 'light');
+}
+
+function toggleThemeMode() {
+    const currentMode = document.documentElement.dataset.themeMode === 'dark' ? 'dark' : 'light';
+    applyThemeMode(currentMode === 'dark' ? 'light' : 'dark');
+}
+
+function syncThemeModeButton() {
+    const themeButton = document.getElementById('sidebar-theme-btn');
+    if (!themeButton) return;
+
+    const isDarkMode = document.documentElement.dataset.themeMode === 'dark';
+    const icon = themeButton.querySelector('i');
+
+    themeButton.classList.toggle('active', isDarkMode);
+    themeButton.setAttribute('aria-pressed', String(isDarkMode));
+    themeButton.title = isDarkMode ? '切換白天模式' : '切換黑夜模式';
+
+    if (icon) {
+        icon.classList.toggle('fa-moon', !isDarkMode);
+        icon.classList.toggle('fa-sun', isDarkMode);
+    }
+}
+
+function refreshThemeSensitiveViews() {
+    const strategySection = document.getElementById('strategy');
+    if (!strategySection || strategySection.style.display !== 'block') return;
+    loadLotteryDashboard().catch((error) => {
+        console.error('Failed to refresh strategy views after theme change:', error);
+    });
+}
+
 function canAccessSection(sectionId, role) {
     const targetSection = document.getElementById(sectionId);
     if (!targetSection) return false;
@@ -513,6 +558,7 @@ function applyLoginUI(username, role) {
     loadGallery();
     loadCourtStatus();
     loadTeamResources();
+    initVideoImprovementPanel();
 }
 
 function handleLogout() {
@@ -697,11 +743,549 @@ let teamResourceSectionsState = [];
 let activeTeamResourceNotesSectionId = null;
 let activeNotesScope = 'video';
 let sectionDragState = null;
+let videoImprovementPanelOpen = false;
+const FRAME_ANALYSIS_FPS = 30;
+let videoImprovementUsers = [];
+let activeVideoImprovementUsername = '';
+const frameAnalysisState = {
+    mode: 'none',
+    localObjectUrl: '',
+    youtubePlayer: null,
+    youtubeApiReady: false,
+    youtubeApiPromise: null,
+    viewerScale: 100,
+};
 
 function getYouTubeVideoId(url) {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
     const match = String(url || '').match(regExp);
     return (match && match[2] && match[2].length === 11) ? match[2] : null;
+}
+
+function getFrameAnalysisElements() {
+    return {
+        fileInput: document.getElementById('frame-analysis-file'),
+        urlInput: document.getElementById('frame-analysis-url'),
+        empty: document.getElementById('frame-analysis-empty'),
+        status: document.getElementById('frame-analysis-status'),
+        video: document.getElementById('frame-analysis-video'),
+        youtube: document.getElementById('frame-analysis-youtube'),
+        viewer: document.getElementById('frame-analysis-viewer'),
+        scaleInput: document.getElementById('frame-analysis-scale'),
+        scaleValue: document.getElementById('frame-analysis-scale-value'),
+    };
+}
+
+function applyFrameAnalysisViewerScale(scalePercent) {
+    const { viewer, scaleInput, scaleValue } = getFrameAnalysisElements();
+    const nextScale = Math.max(70, Math.min(100, Number(scalePercent) || 100));
+    frameAnalysisState.viewerScale = nextScale;
+    if (viewer) viewer.style.setProperty('--frame-analysis-viewer-width', `${nextScale}%`);
+    if (scaleInput) scaleInput.value = String(nextScale);
+    if (scaleValue) scaleValue.textContent = `${nextScale}%`;
+}
+
+function setFrameAnalysisViewerScale(scalePercent) {
+    applyFrameAnalysisViewerScale(scalePercent);
+}
+
+function formatFrameAnalysisTime(seconds) {
+    const safeSeconds = Math.max(0, Number(seconds) || 0);
+    const hours = Math.floor(safeSeconds / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+    const wholeSeconds = Math.floor(safeSeconds % 60);
+    const fraction = Math.round((safeSeconds % 1) * 100);
+    const base = `${String(minutes).padStart(hours ? 2 : 1, '0')}:${String(wholeSeconds).padStart(2, '0')}.${String(fraction).padStart(2, '0')}`;
+    return hours ? `${hours}:${base}` : base;
+}
+
+function updateFrameAnalysisStatus() {
+    const { status, video } = getFrameAnalysisElements();
+    if (!status) return;
+    syncFrameAnalysisToggleButton();
+
+    if (frameAnalysisState.mode === 'local' && video) {
+        const duration = Number.isFinite(video.duration) ? video.duration : 0;
+        const current = Number.isFinite(video.currentTime) ? video.currentTime : 0;
+        const stateLabel = video.paused ? '暫停中' : '播放中';
+        status.textContent = `本機影片｜${stateLabel}｜${formatFrameAnalysisTime(current)} / ${duration ? formatFrameAnalysisTime(duration) : '--:--.--'}`;
+        return;
+    }
+
+    if (frameAnalysisState.mode === 'youtube' && frameAnalysisState.youtubePlayer && frameAnalysisState.youtubeApiReady) {
+        const player = frameAnalysisState.youtubePlayer;
+        const current = Number(player.getCurrentTime?.() || 0);
+        const duration = Number(player.getDuration?.() || 0);
+        const playerState = Number(player.getPlayerState?.());
+        const stateLabel = playerState === 1 ? '播放中' : '暫停中';
+        status.textContent = `YouTube｜${stateLabel}｜${formatFrameAnalysisTime(current)} / ${duration ? formatFrameAnalysisTime(duration) : '--:--.--'}`;
+        return;
+    }
+
+    status.textContent = '尚未載入影片';
+}
+
+function isFrameAnalysisPlaying() {
+    const { video } = getFrameAnalysisElements();
+    if (frameAnalysisState.mode === 'local' && video) return !video.paused;
+    if (frameAnalysisState.mode === 'youtube' && frameAnalysisState.youtubePlayer) {
+        return Number(frameAnalysisState.youtubePlayer.getPlayerState?.()) === 1;
+    }
+    return false;
+}
+
+function syncFrameAnalysisToggleButton() {
+    const toggleButton = document.getElementById('frame-analysis-play-toggle');
+    if (!toggleButton) return;
+    const icon = toggleButton.querySelector('i');
+    const label = toggleButton.querySelector('span');
+    const isPlaying = isFrameAnalysisPlaying();
+
+    toggleButton.title = isPlaying ? '暫停' : '播放';
+    toggleButton.setAttribute('aria-label', isPlaying ? '暫停' : '播放');
+
+    if (icon) {
+        icon.classList.toggle('fa-play', !isPlaying);
+        icon.classList.toggle('fa-pause', isPlaying);
+    }
+    if (label) {
+        label.textContent = isPlaying ? '暫停' : '播放';
+    }
+}
+
+function setFrameAnalysisMode(mode) {
+    const { empty, video, youtube } = getFrameAnalysisElements();
+    frameAnalysisState.mode = mode;
+    if (empty) empty.style.display = mode === 'none' ? 'flex' : 'none';
+    if (video) {
+        video.style.display = mode === 'local' ? 'block' : 'none';
+    }
+    if (youtube) {
+        youtube.style.display = mode === 'youtube' ? 'block' : 'none';
+    }
+    updateFrameAnalysisStatus();
+}
+
+function cleanupFrameAnalysisLocalVideo() {
+    const { video, fileInput } = getFrameAnalysisElements();
+    if (video) {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+    }
+    if (frameAnalysisState.localObjectUrl) {
+        URL.revokeObjectURL(frameAnalysisState.localObjectUrl);
+        frameAnalysisState.localObjectUrl = '';
+    }
+    if (fileInput) fileInput.value = '';
+}
+
+function stopFrameAnalysisYouTube() {
+    if (!frameAnalysisState.youtubePlayer) return;
+    try {
+        frameAnalysisState.youtubePlayer.pauseVideo?.();
+        frameAnalysisState.youtubePlayer.stopVideo?.();
+        frameAnalysisState.youtubePlayer.destroy?.();
+    } catch (error) {
+        console.error('Failed to stop YouTube frame analysis player', error);
+    } finally {
+        frameAnalysisState.youtubePlayer = null;
+    }
+}
+
+function resetFrameAnalysisPlayback(nextMode = 'none') {
+    if (nextMode !== 'local') cleanupFrameAnalysisLocalVideo();
+    if (nextMode !== 'youtube') stopFrameAnalysisYouTube();
+    setFrameAnalysisMode(nextMode);
+}
+
+function attachFrameAnalysisVideoEvents() {
+    const { video } = getFrameAnalysisElements();
+    if (!video || video.dataset.bound === 'true') return;
+    video.dataset.bound = 'true';
+    ['loadedmetadata', 'play', 'pause', 'timeupdate', 'seeked', 'ended'].forEach((eventName) => {
+        video.addEventListener(eventName, updateFrameAnalysisStatus);
+    });
+}
+
+function loadFrameAnalysisLocalVideo(file) {
+    const { video, empty, urlInput } = getFrameAnalysisElements();
+    if (!video || !file) return;
+    cleanupFrameAnalysisLocalVideo();
+    resetFrameAnalysisPlayback('local');
+    if (urlInput) urlInput.value = '';
+    if (empty) empty.style.display = 'none';
+    frameAnalysisState.localObjectUrl = URL.createObjectURL(file);
+    video.src = frameAnalysisState.localObjectUrl;
+    video.currentTime = 0;
+    video.load();
+    setFrameAnalysisMode('local');
+    updateFrameAnalysisStatus();
+}
+
+function handleFrameAnalysisFileChange(event) {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+    loadFrameAnalysisLocalVideo(file);
+}
+
+function ensureYouTubeIframeApi() {
+    if (window.YT && typeof window.YT.Player === 'function') {
+        frameAnalysisState.youtubeApiReady = true;
+        return Promise.resolve();
+    }
+
+    if (frameAnalysisState.youtubeApiPromise) return frameAnalysisState.youtubeApiPromise;
+
+    frameAnalysisState.youtubeApiPromise = new Promise((resolve) => {
+        const previousReady = window.onYouTubeIframeAPIReady;
+        window.onYouTubeIframeAPIReady = () => {
+            frameAnalysisState.youtubeApiReady = true;
+            if (typeof previousReady === 'function') previousReady();
+            resolve();
+        };
+        if (!document.querySelector('script[data-youtube-iframe-api="true"]')) {
+            const script = document.createElement('script');
+            script.src = 'https://www.youtube.com/iframe_api';
+            script.async = true;
+            script.dataset.youtubeIframeApi = 'true';
+            document.head.appendChild(script);
+        }
+    });
+
+    return frameAnalysisState.youtubeApiPromise;
+}
+
+async function loadFrameAnalysisYouTube() {
+    const { urlInput, youtube, empty } = getFrameAnalysisElements();
+    const url = urlInput ? urlInput.value.trim() : '';
+    const videoId = getYouTubeVideoId(url);
+    if (!videoId) {
+        alert('請輸入有效的 YouTube 連結。');
+        return;
+    }
+
+    resetFrameAnalysisPlayback('youtube');
+    await ensureYouTubeIframeApi();
+    if (!youtube) return;
+    if (empty) empty.style.display = 'none';
+    youtube.innerHTML = '<div id="frame-analysis-youtube-player"></div>';
+
+    frameAnalysisState.youtubePlayer = new window.YT.Player('frame-analysis-youtube-player', {
+        videoId,
+        playerVars: {
+            rel: 0,
+            modestbranding: 1,
+            playsinline: 1,
+        },
+        events: {
+            onReady: () => {
+                setFrameAnalysisMode('youtube');
+                updateFrameAnalysisStatus();
+            },
+            onStateChange: updateFrameAnalysisStatus,
+        },
+    });
+}
+
+function getFrameAnalysisCurrentTime() {
+    const { video } = getFrameAnalysisElements();
+    if (frameAnalysisState.mode === 'local' && video) return Number(video.currentTime || 0);
+    if (frameAnalysisState.mode === 'youtube' && frameAnalysisState.youtubePlayer) {
+        return Number(frameAnalysisState.youtubePlayer.getCurrentTime?.() || 0);
+    }
+    return 0;
+}
+
+function getFrameAnalysisDuration() {
+    const { video } = getFrameAnalysisElements();
+    if (frameAnalysisState.mode === 'local' && video) return Number.isFinite(video.duration) ? video.duration : 0;
+    if (frameAnalysisState.mode === 'youtube' && frameAnalysisState.youtubePlayer) {
+        return Number(frameAnalysisState.youtubePlayer.getDuration?.() || 0);
+    }
+    return 0;
+}
+
+function seekFrameAnalysisTo(timeInSeconds) {
+    const nextTime = Math.max(0, Math.min(getFrameAnalysisDuration() || Number.MAX_SAFE_INTEGER, Number(timeInSeconds) || 0));
+    const { video } = getFrameAnalysisElements();
+
+    if (frameAnalysisState.mode === 'local' && video) {
+        video.currentTime = nextTime;
+        updateFrameAnalysisStatus();
+        return;
+    }
+
+    if (frameAnalysisState.mode === 'youtube' && frameAnalysisState.youtubePlayer) {
+        frameAnalysisState.youtubePlayer.seekTo(nextTime, true);
+        updateFrameAnalysisStatus();
+    }
+}
+
+function playFrameAnalysisVideo() {
+    const { video } = getFrameAnalysisElements();
+    if (frameAnalysisState.mode === 'local' && video) {
+        video.play().catch((error) => console.error('Failed to play local frame analysis video', error));
+        return;
+    }
+    if (frameAnalysisState.mode === 'youtube' && frameAnalysisState.youtubePlayer) {
+        frameAnalysisState.youtubePlayer.playVideo?.();
+        updateFrameAnalysisStatus();
+    }
+}
+
+function pauseFrameAnalysisVideo() {
+    const { video } = getFrameAnalysisElements();
+    if (frameAnalysisState.mode === 'local' && video) {
+        video.pause();
+        updateFrameAnalysisStatus();
+        return;
+    }
+    if (frameAnalysisState.mode === 'youtube' && frameAnalysisState.youtubePlayer) {
+        frameAnalysisState.youtubePlayer.pauseVideo?.();
+        updateFrameAnalysisStatus();
+    }
+}
+
+function toggleFrameAnalysisPlayback() {
+    if (isFrameAnalysisPlaying()) {
+        pauseFrameAnalysisVideo();
+        return;
+    }
+    playFrameAnalysisVideo();
+}
+
+function stepFrameAnalysisFrame(direction) {
+    const frameOffset = (Number(direction) || 0) / FRAME_ANALYSIS_FPS;
+    pauseFrameAnalysisVideo();
+    seekFrameAnalysisTo(getFrameAnalysisCurrentTime() + frameOffset);
+}
+
+function adjustFrameAnalysisTime(deltaSeconds) {
+    seekFrameAnalysisTo(getFrameAnalysisCurrentTime() + (Number(deltaSeconds) || 0));
+}
+
+function initFrameAnalysisDashboard() {
+    const { fileInput } = getFrameAnalysisElements();
+    attachFrameAnalysisVideoEvents();
+    if (fileInput && fileInput.dataset.bound !== 'true') {
+        fileInput.dataset.bound = 'true';
+        fileInput.addEventListener('change', handleFrameAnalysisFileChange);
+    }
+    applyFrameAnalysisViewerScale(frameAnalysisState.viewerScale);
+    setFrameAnalysisMode('none');
+}
+
+function getVideoImprovementElements() {
+    return {
+        userSelect: document.getElementById('video-improvement-user-select'),
+        title: document.querySelector('.video-improvement-card__title'),
+        subtitle: document.querySelector('.video-improvement-card__subtitle'),
+        viewerLabel: document.querySelector('.video-improvement-card__viewer label'),
+        toggle: document.getElementById('video-improvement-toggle'),
+        receive: document.getElementById('video-improvement-receive'),
+        set: document.getElementById('video-improvement-set'),
+        spike: document.getElementById('video-improvement-spike'),
+        serve: document.getElementById('video-improvement-serve'),
+        status: document.getElementById('video-improvement-status'),
+        saveButton: document.getElementById('video-improvement-save-btn'),
+    };
+}
+
+function getCurrentUsername() {
+    return (localStorage.getItem('vbt_username') || '').trim();
+}
+
+function setVideoImprovementStatus(message) {
+    const { status } = getVideoImprovementElements();
+    if (status) status.textContent = message;
+}
+
+function normalizeVideoImprovementPanelText() {
+    const elements = getVideoImprovementElements();
+    if (elements.subtitle) elements.subtitle.textContent = '把最近最想修正的動作寫下來，方便自己回看，也方便隊長了解大家目前卡住的地方。';
+    if (elements.viewerLabel) elements.viewerLabel.textContent = '查看隊員';
+    if (elements.toggle) elements.toggle.title = videoImprovementPanelOpen ? '收合想進步的地方' : '展開想進步的地方';
+    if (elements.receive) {
+        elements.receive.previousElementSibling.textContent = '接球';
+        elements.receive.placeholder = '例如：接發時肩膀容易歪掉會接歪';
+    }
+    if (elements.set) {
+        elements.set.previousElementSibling.textContent = '舉球';
+        elements.set.placeholder = '例如：出手點太低導致球太流。';
+    }
+    if (elements.spike) {
+        elements.spike.previousElementSibling.textContent = '扣球';
+        elements.spike.placeholder = '例如：手沒有伸直擊中球';
+    }
+    if (elements.serve) {
+        elements.serve.previousElementSibling.textContent = '發球';
+        elements.serve.placeholder = '例如：拋球位置要再右邊再往前一點';
+    }
+    if (elements.saveButton) elements.saveButton.textContent = '儲存想進步的地方';
+}
+
+function applyVideoImprovementGoals(goals = {}) {
+    const elements = getVideoImprovementElements();
+    if (elements.receive) elements.receive.value = goals.receive || '';
+    if (elements.set) elements.set.value = goals.set || '';
+    if (elements.spike) elements.spike.value = goals.spike || '';
+    if (elements.serve) elements.serve.value = goals.serve || '';
+}
+
+function updateVideoImprovementEditability() {
+    const currentUsername = getCurrentUsername();
+    const canEdit = !!currentUsername && activeVideoImprovementUsername === currentUsername;
+    const { receive, set, spike, serve, saveButton } = getVideoImprovementElements();
+    [receive, set, spike, serve].forEach((field) => {
+        if (!field) return;
+        field.disabled = !canEdit;
+        field.readOnly = !canEdit;
+    });
+    if (saveButton) saveButton.disabled = !canEdit;
+}
+
+function renderVideoImprovementUserOptions() {
+    const { userSelect } = getVideoImprovementElements();
+    if (!userSelect) return;
+    const role = localStorage.getItem('vbt_role');
+    const currentUsername = getCurrentUsername();
+
+    if (role !== 'captain') {
+        userSelect.innerHTML = currentUsername ? `<option value="${escapeHtml(currentUsername)}">${escapeHtml(currentUsername)}</option>` : '';
+        userSelect.value = currentUsername;
+        activeVideoImprovementUsername = currentUsername;
+        return;
+    }
+
+    const names = Array.from(new Set([currentUsername, ...videoImprovementUsers.map((user) => user.username).filter(Boolean)])).filter(Boolean);
+    userSelect.innerHTML = names.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+    if (!activeVideoImprovementUsername || !names.includes(activeVideoImprovementUsername)) {
+        activeVideoImprovementUsername = currentUsername || names[0] || '';
+    }
+    userSelect.value = activeVideoImprovementUsername;
+}
+
+async function loadVideoImprovementUsers() {
+    const role = localStorage.getItem('vbt_role');
+    if (role !== 'captain') {
+        videoImprovementUsers = [];
+        renderVideoImprovementUserOptions();
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/team_members');
+        videoImprovementUsers = response.ok ? await response.json() : [];
+    } catch (error) {
+        console.error('Failed to load video improvement users', error);
+        videoImprovementUsers = [];
+    }
+    renderVideoImprovementUserOptions();
+}
+
+async function loadVideoImprovementGoals(username) {
+    const viewerUsername = getCurrentUsername();
+    const viewerRole = localStorage.getItem('vbt_role') || '';
+    const targetUsername = username || activeVideoImprovementUsername || viewerUsername;
+    if (!targetUsername) {
+        setVideoImprovementStatus('尚未登入，無法載入個人設定');
+        return;
+    }
+
+    activeVideoImprovementUsername = targetUsername;
+    renderVideoImprovementUserOptions();
+    updateVideoImprovementEditability();
+    setVideoImprovementStatus('載入中...');
+
+    try {
+        const params = new URLSearchParams({
+            username: targetUsername,
+            viewer_username: viewerUsername,
+            viewer_role: viewerRole,
+        });
+        const response = await fetch(`/api/video_improvement_goals?${params.toString()}`);
+        const data = await response.json();
+        if (!response.ok) {
+            setVideoImprovementStatus(data.error || '載入失敗');
+            return;
+        }
+        applyVideoImprovementGoals(data.goals || {});
+        const updatedAt = data.goals?.updated_at ? `，上次儲存 ${String(data.goals.updated_at).replace('T', ' ')}` : '';
+        setVideoImprovementStatus(`${data.username} 的想進步的地方${updatedAt}`);
+        updateVideoImprovementEditability();
+    } catch (error) {
+        console.error('Failed to load video improvement goals', error);
+        setVideoImprovementStatus('載入失敗');
+    }
+}
+
+function handleVideoImprovementUserChange(username) {
+    loadVideoImprovementGoals(username);
+}
+
+async function saveVideoImprovementGoals() {
+    const username = getCurrentUsername();
+    if (!username) {
+        alert('請先登入。');
+        return;
+    }
+    if (activeVideoImprovementUsername !== username) {
+        alert('只能編輯自己的想進步的地方。');
+        return;
+    }
+
+    const { receive, set, spike, serve } = getVideoImprovementElements();
+    setVideoImprovementStatus('儲存中...');
+
+    try {
+        const response = await fetch('/api/video_improvement_goals', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username,
+                receive: receive ? receive.value.trim() : '',
+                set: set ? set.value.trim() : '',
+                spike: spike ? spike.value.trim() : '',
+                serve: serve ? serve.value.trim() : '',
+            }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            setVideoImprovementStatus(data.error || '儲存失敗');
+            return;
+        }
+        const updatedAt = data.goals?.updated_at ? `，上次儲存 ${String(data.goals.updated_at).replace('T', ' ')}` : '';
+        setVideoImprovementStatus(`已儲存自己的想進步的地方${updatedAt}`);
+    } catch (error) {
+        console.error('Failed to save video improvement goals', error);
+        setVideoImprovementStatus('儲存失敗');
+    }
+}
+
+function initVideoImprovementPanel() {
+    activeVideoImprovementUsername = getCurrentUsername();
+    normalizeVideoImprovementPanelText();
+    applyVideoImprovementPanelState();
+    renderVideoImprovementUserOptions();
+    updateVideoImprovementEditability();
+    loadVideoImprovementUsers().then(() => loadVideoImprovementGoals(activeVideoImprovementUsername));
+}
+
+function applyVideoImprovementPanelState() {
+    const body = document.getElementById('video-improvement-body');
+    const toggle = document.getElementById('video-improvement-toggle');
+    const icon = document.getElementById('video-improvement-toggle-icon');
+    if (body) body.style.display = videoImprovementPanelOpen ? 'grid' : 'none';
+    if (!toggle) return;
+    toggle.setAttribute('aria-expanded', String(videoImprovementPanelOpen));
+    toggle.title = videoImprovementPanelOpen ? '收合想進步的地方' : '展開想進步的地方';
+    if (icon) icon.textContent = videoImprovementPanelOpen ? '▴' : '▾';
+}
+
+function toggleVideoImprovementPanel(forceState) {
+    videoImprovementPanelOpen = typeof forceState === 'boolean' ? forceState : !videoImprovementPanelOpen;
+    applyVideoImprovementPanelState();
 }
 
 function isCaptainRole() {
@@ -1293,6 +1877,8 @@ async function saveVideoNotes() {
 
 window.addEventListener('load', loadVideoSections);
 window.addEventListener('load', loadTeamResources);
+window.addEventListener('load', initFrameAnalysisDashboard);
+window.addEventListener('load', initVideoImprovementPanel);
 window.addEventListener('load', initCourtWeekdayFilters);
 window.addEventListener('load', loadCourtStatus);
 
@@ -4335,7 +4921,7 @@ async function loadLotteryDashboard() {
         endInput.value = endMonth;
     }
 
-    const targetMonth = getMonthData(1).id;
+    const targetMonth = endMonth || startMonth || getMonthData(0).id;
     const probabilityWeekdays = getSelectedProbabilityWeekdays();
     const strategyWeekdays = getSelectedStrategyWeekdays();
     const probabilityCourts = getSelectedProbabilityCourts();

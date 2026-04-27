@@ -145,6 +145,33 @@ def set_system_data_json(key, value):
     sb_upsert("system_data", {"key": key, "value": dumps_json(value)}, on_conflict="key")
 
 
+VIDEO_IMPROVEMENT_GOALS_KEY = "video_improvement_goals"
+
+
+def get_video_improvement_goals_payload():
+    payload = get_system_data_json(VIDEO_IMPROVEMENT_GOALS_KEY, {"users": {}})
+    users = payload.get("users")
+    if not isinstance(users, dict):
+        users = {}
+    normalized = {}
+    for username, values in users.items():
+        if not str(username or "").strip():
+            continue
+        values = values or {}
+        normalized[str(username).strip()] = {
+            "receive": str(values.get("receive") or "").strip(),
+            "set": str(values.get("set") or "").strip(),
+            "spike": str(values.get("spike") or "").strip(),
+            "serve": str(values.get("serve") or "").strip(),
+            "updated_at": str(values.get("updated_at") or "").strip(),
+        }
+    return {"users": normalized}
+
+
+def save_video_improvement_goals_payload(payload):
+    set_system_data_json(VIDEO_IMPROVEMENT_GOALS_KEY, payload)
+
+
 def normalize_month_id(month_id):
     if not month_id:
         return None
@@ -652,24 +679,48 @@ def fetch_existing_month_ids(table_name):
     return sorted([row for row in rows if row])
 
 
+def build_lottery_analysis_rows(month_id, saved_rows):
+    normalized_month = normalize_month_id(month_id)
+    normalized_rows = []
+    for row in saved_rows or []:
+        normalized = normalize_lottery_row(row)
+        if normalized["date"]:
+            normalized_rows.append(normalized)
+
+    if normalized_rows:
+        return sorted(normalized_rows, key=lambda row: row["date"])
+
+    if not normalized_month:
+        return []
+
+    return build_lottery_month_rows(normalized_month, saved_rows)
+
+
 def build_probability_records(month_ids):
     records = []
     skipped_months = []
+    court_map_cache = {}
+
+    def get_court_map(month_id):
+        normalized_month = normalize_month_id(month_id)
+        if not normalized_month:
+            return {}
+        if normalized_month not in court_map_cache:
+            court_content = fetch_month_content("court_status", normalized_month)
+            court_rows = parse_court_status_rows(court_content) if court_content is not None else []
+            court_map_cache[normalized_month] = {row["date"]: row for row in court_rows if row.get("date")}
+        return court_map_cache[normalized_month]
 
     for month_id in month_ids:
         bid_content = fetch_month_content("lottery_bids", month_id)
-        court_content = fetch_month_content("court_status", month_id)
-
-        bid_rows = build_lottery_month_rows(month_id, parse_json_array(bid_content)) if bid_content is not None else []
-        court_rows = parse_court_status_rows(court_content) if court_content is not None else []
-        court_map = {row["date"]: row for row in court_rows if row.get("date")}
+        bid_rows = build_lottery_analysis_rows(month_id, parse_json_array(bid_content)) if bid_content is not None else []
 
         total_bids = 0
         for row in bid_rows:
             total_bids += sum(row["slot1"].values()) + sum(row["slot2"].values())
 
         has_bid_data = bid_content is not None and total_bids > 0
-        has_court_data = court_content is not None
+        has_court_data = any(get_court_map((row.get("date") or "")[:7]).get(row.get("date")) for row in bid_rows if row.get("date"))
         if not has_bid_data or not has_court_data:
             skipped_months.append(month_id)
             continue
@@ -677,7 +728,7 @@ def build_probability_records(month_ids):
         for row in bid_rows:
             date_key = row["date"]
             weekday = LOTTERY_WEEKDAY_NAMES[datetime.strptime(date_key, "%Y-%m-%d").weekday()]
-            court_row = court_map.get(date_key, {"slot1": "", "slot2": ""})
+            court_row = get_court_map(date_key[:7]).get(date_key, {"slot1": "", "slot2": ""})
             for slot_key, time_label in LOTTERY_TIMES.items():
                 won_court = extract_court_name(court_row.get(slot_key))
                 for court in LOTTERY_COURTS:
@@ -1187,6 +1238,45 @@ def reorder_video_sections():
         return jsonify({"error": "Invalid order format"}), 400
     save_video_section_order(order)
     return jsonify({"status": "success"})
+
+
+@app.route("/api/video_improvement_goals", methods=["GET", "POST"])
+def video_improvement_goals_api():
+    payload = get_video_improvement_goals_payload()
+
+    if request.method == "GET":
+        viewer_username = (request.args.get("viewer_username") or "").strip()
+        viewer_role = (request.args.get("viewer_role") or "").strip().lower()
+        requested_username = (request.args.get("username") or viewer_username).strip()
+        if not requested_username:
+            return jsonify({"error": "Missing username"}), 400
+        if viewer_role != "captain":
+            requested_username = viewer_username
+        values = payload["users"].get(
+            requested_username,
+            {"receive": "", "set": "", "spike": "", "serve": "", "updated_at": ""},
+        )
+        return jsonify(
+            {
+                "username": requested_username,
+                "goals": values,
+            }
+        )
+
+    data = request.json or {}
+    username = (data.get("username") or "").strip()
+    if not username:
+        return jsonify({"error": "Missing username"}), 400
+
+    payload["users"][username] = {
+        "receive": str(data.get("receive") or "").strip(),
+        "set": str(data.get("set") or "").strip(),
+        "spike": str(data.get("spike") or "").strip(),
+        "serve": str(data.get("serve") or "").strip(),
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    save_video_improvement_goals_payload(payload)
+    return jsonify({"status": "success", "username": username, "goals": payload["users"][username]})
 
 
 @app.route("/api/team_resources/sections", methods=["POST"])

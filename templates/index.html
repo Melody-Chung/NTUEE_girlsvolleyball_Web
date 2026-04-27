@@ -68,13 +68,16 @@
                 <li onclick="showSection('schedule')">場地狀態</li>
                 <li onclick="showSection('strategy')" class="captain-only auth-only">投籤、機率與策略</li>
                 <li onclick="showSection('menu')" class="auth-only">訓練菜單</li>
+                <li onclick="showSection('videos')" class="auth-only">影片與動作分析</li> 
                 <li onclick="showSection('team-data')" class="auth-only">球隊資料</li>
-                <li onclick="showSection('videos')" class="auth-only">比賽分析與影片</li> 
                 <li onclick="showSection('approval')" class="captain-only auth-only">帳號審核</li>
             </ul>
             <div class="sidebar-tools" id="sidebar-tools">
                 <button type="button" class="sidebar-pin-btn sidebar-pin-btn--sidebar" id="sidebar-pin-btn-sidebar" onclick="toggleSidebarPin()" aria-pressed="false" title="釘選側邊欄">
                     <i class="fas fa-thumbtack"></i>
+                </button>
+                <button type="button" class="sidebar-pin-btn sidebar-pin-btn--sidebar" id="sidebar-theme-btn" onclick="toggleThemeMode()" aria-pressed="false" title="切換黑夜模式">
+                    <i class="fas fa-moon"></i>
                 </button>
             </div>
         </nav>
@@ -611,8 +614,107 @@
                 </div>
 
                 <div id="videos" class="content-section" style="display:none;">
-                    <h3 class="section-title">比賽分析與影片</h3>
+                    <h3 class="section-title">動作分析</h3>
 
+                    <div class="card video-frame-dashboard">
+                        <div class="video-frame-dashboard__header">
+                            <div>
+                                <h4 class="video-frame-dashboard__title">影片逐幀分析</h4>
+                                <p class="video-frame-dashboard__subtitle">可以上傳本機影片或貼上 YouTube 連結，透過播放、暫停、逐幀與時間跳轉來觀察動作細節。</p>
+                            </div>
+                        </div>
+                        <div class="video-frame-dashboard__inputs">
+                            <label class="video-frame-dashboard__field">
+                                <span>上傳本機影片</span>
+                                <input type="file" id="frame-analysis-file" accept="video/*">
+                            </label>
+                            <div class="video-frame-dashboard__field">
+                                <span>YouTube 連結</span>
+                                <div class="video-frame-dashboard__inline">
+                                    <input type="text" id="frame-analysis-url" class="video-control-input" placeholder="貼上 YouTube 連結...">
+                                    <button type="button" class="court-btn" onclick="loadFrameAnalysisYouTube()">載入影片</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="video-frame-dashboard__viewer" id="frame-analysis-viewer">
+                            <div class="video-frame-dashboard__empty" id="frame-analysis-empty">上傳影片或貼上 YouTube 連結後，就可以開始逐幀分析。</div>
+                            <video id="frame-analysis-video" class="video-frame-dashboard__video" playsinline preload="metadata"></video>
+                            <div id="frame-analysis-youtube" class="video-frame-dashboard__youtube"></div>
+                        </div>
+                        <div class="video-frame-dashboard__resize">
+                            <label for="frame-analysis-scale">影片大小</label>
+                            <input type="range" id="frame-analysis-scale" min="70" max="100" step="5" value="100" oninput="setFrameAnalysisViewerScale(this.value)">
+                            <span id="frame-analysis-scale-value">100%</span>
+                        </div>
+                        <div class="video-frame-dashboard__status" id="frame-analysis-status">尚未載入影片</div>
+                        <div class="video-frame-dashboard__controls">
+                            <button type="button" class="court-btn frame-analysis-control" onclick="adjustFrameAnalysisTime(-600)" title="往前 10 分鐘">
+                                <i class="fas fa-fast-backward"></i><span>10m</span>
+                            </button>
+                            <button type="button" class="court-btn frame-analysis-control" onclick="adjustFrameAnalysisTime(-60)" title="往前 1 分鐘">
+                                <i class="fas fa-step-backward"></i><span>1m</span>
+                            </button>
+                            <button type="button" class="court-btn frame-analysis-control" onclick="adjustFrameAnalysisTime(-5)" title="往前 5 秒">
+                                <i class="fas fa-undo-alt"></i><span>5s</span>
+                            </button>
+                            <button type="button" class="court-btn frame-analysis-control" onclick="stepFrameAnalysisFrame(-1)" title="往前 1 frame">
+                                <i class="fas fa-chevron-left"></i><span>-F</span>
+                            </button>
+                            <button type="button" class="court-btn frame-analysis-control frame-analysis-control--primary" id="frame-analysis-play-toggle" onclick="toggleFrameAnalysisPlayback()" title="播放">
+                                <i class="fas fa-play"></i><span>播放</span>
+                            </button>
+                            <button type="button" class="court-btn frame-analysis-control" onclick="stepFrameAnalysisFrame(1)" title="往後 1 frame">
+                                <i class="fas fa-chevron-right"></i><span>+F</span>
+                            </button>
+                            <button type="button" class="court-btn frame-analysis-control" onclick="adjustFrameAnalysisTime(5)" title="往後 5 秒">
+                                <i class="fas fa-redo-alt"></i><span>5s</span>
+                            </button>
+                            <button type="button" class="court-btn frame-analysis-control" onclick="adjustFrameAnalysisTime(60)" title="往後 1 分鐘">
+                                <i class="fas fa-step-forward"></i><span>1m</span>
+                            </button>
+                            <button type="button" class="court-btn frame-analysis-control" onclick="adjustFrameAnalysisTime(600)" title="往後 10 分鐘">
+                                <i class="fas fa-fast-forward"></i><span>10m</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="card video-improvement-card auth-only">
+                        <button type="button" class="video-improvement-card__toggle-row" id="video-improvement-toggle" onclick="toggleVideoImprovementPanel()" aria-expanded="true" aria-controls="video-improvement-body" title="&#x6536;&#x5408;&#x60f3;&#x9032;&#x6b65;&#x7684;&#x5730;&#x65b9;">
+                            <span class="video-improvement-card__toggle-label">&#x60f3;&#x9032;&#x6b65;&#x7684;&#x5730;&#x65b9;</span>
+                            <span class="video-improvement-card__toggle-icon" id="video-improvement-toggle-icon">&#x25b4;</span>
+                        </button>
+                        <div class="video-improvement-card__body" id="video-improvement-body">
+                            <p class="video-improvement-card__subtitle">&#x628a;&#x6700;&#x8fd1;&#x6700;&#x60f3;&#x4fee;&#x6b63;&#x7684;&#x52d5;&#x4f5c;&#x5beb;&#x4e0b;&#x4f86;&#xff0c;&#x65b9;&#x4fbf;&#x81ea;&#x5df1;&#x56de;&#x770b;&#xff0c;&#x4e5f;&#x65b9;&#x4fbf;&#x968a;&#x9577;&#x4e86;&#x89e3;&#x5927;&#x5bb6;&#x76ee;&#x524d;&#x5361;&#x4f4f;&#x7684;&#x5730;&#x65b9;&#x3002;</p>
+                            <div class="video-improvement-card__viewer captain-only auth-only">
+                                <label for="video-improvement-user-select">&#x67e5;&#x770b;&#x968a;&#x54e1;</label>
+                                <select id="video-improvement-user-select" class="video-control-input" onchange="handleVideoImprovementUserChange(this.value)"></select>
+                            </div>
+                            <div class="video-improvement-card__grid">
+                                <label class="video-improvement-card__field">
+                                    <span>&#x63a5;&#x7403;</span>
+                                    <textarea id="video-improvement-receive" placeholder="&#x4f8b;&#x5982;&#xff1a;&#x63a5;&#x767c;&#x6642;&#x80a9;&#x8180;&#x5bb9;&#x6613;&#x6b6a;&#x6389;&#xff0c;&#x60f3;&#x628a;&#x5e73;&#x53f0;&#x7a69;&#x5b9a;&#x4e0b;&#x4f86;&#x3002;"></textarea>
+                                </label>
+                                <label class="video-improvement-card__field">
+                                    <span>&#x8209;&#x7403;</span>
+                                    <textarea id="video-improvement-set" placeholder="&#x4f8b;&#x5982;&#xff1a;&#x60f3;&#x6539;&#x5584;&#x8209;&#x7403;&#x51fa;&#x624b;&#x9ede;&#x592a;&#x4f4e;&#x3001;&#x7403;&#x578b;&#x4e0d;&#x7a69;&#x3002;"></textarea>
+                                </label>
+                                <label class="video-improvement-card__field">
+                                    <span>&#x6263;&#x7403;</span>
+                                    <textarea id="video-improvement-spike" placeholder="&#x4f8b;&#x5982;&#xff1a;&#x52a9;&#x8dd1;&#x7bc0;&#x594f;&#x548c;&#x63ee;&#x81c2; timing &#x9084;&#x60f3;&#x518d;&#x66f4;&#x9806;&#x3002;"></textarea>
+                                </label>
+                                <label class="video-improvement-card__field">
+                                    <span>&#x767c;&#x7403;</span>
+                                    <textarea id="video-improvement-serve" placeholder="&#x4f8b;&#x5982;&#xff1a;&#x767c;&#x7403;&#x62cb;&#x7403;&#x592a;&#x524d;&#x9762;&#xff0c;&#x60f3;&#x8b93;&#x51fa;&#x624b;&#x66f4;&#x7a69;&#x5b9a;&#x3002;"></textarea>
+                                </label>
+                            </div>
+                            <div class="video-improvement-card__footer">
+                                <div class="video-improvement-card__status" id="video-improvement-status">&#x586b;&#x597d;&#x5f8c;&#x8a18;&#x5f97;&#x5132;&#x5b58;&#x3002;</div>
+                                <button type="button" class="court-btn" id="video-improvement-save-btn" onclick="saveVideoImprovementGoals()">&#x5132;&#x5b58;&#x5167;&#x5bb9;</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h3 class="section-title">&#x5f71;&#x7247;</h3>
                     <div class="card video-control-card">
                         <div class="video-control-grid">
                             <div class="video-control-block">
