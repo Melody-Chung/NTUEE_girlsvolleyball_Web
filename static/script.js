@@ -743,10 +743,7 @@ let teamResourceSectionsState = [];
 let activeTeamResourceNotesSectionId = null;
 let activeNotesScope = 'video';
 let sectionDragState = null;
-let videoImprovementPanelOpen = false;
 const FRAME_ANALYSIS_FPS = 30;
-let videoImprovementUsers = [];
-let activeVideoImprovementUsername = '';
 const frameAnalysisState = {
     mode: 'none',
     localObjectUrl: '',
@@ -1078,17 +1075,15 @@ function initFrameAnalysisDashboard() {
 
 function getVideoImprovementElements() {
     return {
-        userSelect: document.getElementById('video-improvement-user-select'),
-        title: document.querySelector('.video-improvement-card__title'),
         subtitle: document.querySelector('.video-improvement-card__subtitle'),
-        viewerLabel: document.querySelector('.video-improvement-card__viewer label'),
-        toggle: document.getElementById('video-improvement-toggle'),
         receive: document.getElementById('video-improvement-receive'),
         set: document.getElementById('video-improvement-set'),
         spike: document.getElementById('video-improvement-spike'),
         serve: document.getElementById('video-improvement-serve'),
+        other: document.getElementById('video-improvement-other'),
         status: document.getElementById('video-improvement-status'),
         saveButton: document.getElementById('video-improvement-save-btn'),
+        count: document.getElementById('frame-analysis-notes-count'),
     };
 }
 
@@ -1103,9 +1098,6 @@ function setVideoImprovementStatus(message) {
 
 function normalizeVideoImprovementPanelText() {
     const elements = getVideoImprovementElements();
-    if (elements.subtitle) elements.subtitle.textContent = '把最近最想修正的動作寫下來，方便自己回看，也方便隊長了解大家目前卡住的地方。';
-    if (elements.viewerLabel) elements.viewerLabel.textContent = '查看隊員';
-    if (elements.toggle) elements.toggle.title = videoImprovementPanelOpen ? '收合想進步的地方' : '展開想進步的地方';
     if (elements.receive) {
         elements.receive.previousElementSibling.textContent = '接球';
         elements.receive.placeholder = '例如：接發時肩膀容易歪掉會接歪';
@@ -1122,7 +1114,18 @@ function normalizeVideoImprovementPanelText() {
         elements.serve.previousElementSibling.textContent = '發球';
         elements.serve.placeholder = '例如：拋球位置要再右邊再往前一點';
     }
-    if (elements.saveButton) elements.saveButton.textContent = '儲存想進步的地方';
+    if (elements.other) {
+        elements.other.previousElementSibling.textContent = '其他';
+        elements.other.placeholder = '例如：步伐、溝通、判斷或其他想補充的記錄。';
+    }
+    if (elements.saveButton) elements.saveButton.textContent = '儲存筆記';
+}
+
+function updateFrameAnalysisNotesCount(goals = {}) {
+    const { count } = getVideoImprovementElements();
+    if (!count) return;
+    const filled = ['receive', 'set', 'spike', 'serve', 'other'].filter((key) => String(goals?.[key] || '').trim()).length;
+    count.textContent = String(filled);
 }
 
 function applyVideoImprovementGoals(goals = {}) {
@@ -1131,13 +1134,14 @@ function applyVideoImprovementGoals(goals = {}) {
     if (elements.set) elements.set.value = goals.set || '';
     if (elements.spike) elements.spike.value = goals.spike || '';
     if (elements.serve) elements.serve.value = goals.serve || '';
+    if (elements.other) elements.other.value = goals.other || '';
+    updateFrameAnalysisNotesCount(goals);
 }
 
 function updateVideoImprovementEditability() {
-    const currentUsername = getCurrentUsername();
-    const canEdit = !!currentUsername && activeVideoImprovementUsername === currentUsername;
-    const { receive, set, spike, serve, saveButton } = getVideoImprovementElements();
-    [receive, set, spike, serve].forEach((field) => {
+    const canEdit = !!getCurrentUsername();
+    const { receive, set, spike, serve, other, saveButton } = getVideoImprovementElements();
+    [receive, set, spike, serve, other].forEach((field) => {
         if (!field) return;
         field.disabled = !canEdit;
         field.readOnly = !canEdit;
@@ -1145,64 +1149,21 @@ function updateVideoImprovementEditability() {
     if (saveButton) saveButton.disabled = !canEdit;
 }
 
-function renderVideoImprovementUserOptions() {
-    const { userSelect } = getVideoImprovementElements();
-    if (!userSelect) return;
-    const role = localStorage.getItem('vbt_role');
-    const currentUsername = getCurrentUsername();
-
-    if (role !== 'captain') {
-        userSelect.innerHTML = currentUsername ? `<option value="${escapeHtml(currentUsername)}">${escapeHtml(currentUsername)}</option>` : '';
-        userSelect.value = currentUsername;
-        activeVideoImprovementUsername = currentUsername;
-        return;
-    }
-
-    const names = Array.from(new Set([currentUsername, ...videoImprovementUsers.map((user) => user.username).filter(Boolean)])).filter(Boolean);
-    userSelect.innerHTML = names.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
-    if (!activeVideoImprovementUsername || !names.includes(activeVideoImprovementUsername)) {
-        activeVideoImprovementUsername = currentUsername || names[0] || '';
-    }
-    userSelect.value = activeVideoImprovementUsername;
-}
-
-async function loadVideoImprovementUsers() {
-    const role = localStorage.getItem('vbt_role');
-    if (role !== 'captain') {
-        videoImprovementUsers = [];
-        renderVideoImprovementUserOptions();
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/team_members');
-        videoImprovementUsers = response.ok ? await response.json() : [];
-    } catch (error) {
-        console.error('Failed to load video improvement users', error);
-        videoImprovementUsers = [];
-    }
-    renderVideoImprovementUserOptions();
-}
-
-async function loadVideoImprovementGoals(username) {
+async function loadVideoImprovementGoals() {
     const viewerUsername = getCurrentUsername();
-    const viewerRole = localStorage.getItem('vbt_role') || '';
-    const targetUsername = username || activeVideoImprovementUsername || viewerUsername;
-    if (!targetUsername) {
-        setVideoImprovementStatus('尚未登入，無法載入個人設定');
+    if (!viewerUsername) {
+        applyVideoImprovementGoals({});
+        setVideoImprovementStatus('登入後可儲存自己的筆記。');
         return;
     }
 
-    activeVideoImprovementUsername = targetUsername;
-    renderVideoImprovementUserOptions();
     updateVideoImprovementEditability();
     setVideoImprovementStatus('載入中...');
 
     try {
         const params = new URLSearchParams({
-            username: targetUsername,
             viewer_username: viewerUsername,
-            viewer_role: viewerRole,
+            username: viewerUsername,
         });
         const response = await fetch(`/api/video_improvement_goals?${params.toString()}`);
         const data = await response.json();
@@ -1211,17 +1172,12 @@ async function loadVideoImprovementGoals(username) {
             return;
         }
         applyVideoImprovementGoals(data.goals || {});
-        const updatedAt = data.goals?.updated_at ? `，上次儲存 ${String(data.goals.updated_at).replace('T', ' ')}` : '';
-        setVideoImprovementStatus(`${data.username} 的想進步的地方${updatedAt}`);
+        setVideoImprovementStatus('');
         updateVideoImprovementEditability();
     } catch (error) {
         console.error('Failed to load video improvement goals', error);
         setVideoImprovementStatus('載入失敗');
     }
-}
-
-function handleVideoImprovementUserChange(username) {
-    loadVideoImprovementGoals(username);
 }
 
 async function saveVideoImprovementGoals() {
@@ -1230,12 +1186,8 @@ async function saveVideoImprovementGoals() {
         alert('請先登入。');
         return;
     }
-    if (activeVideoImprovementUsername !== username) {
-        alert('只能編輯自己的想進步的地方。');
-        return;
-    }
 
-    const { receive, set, spike, serve } = getVideoImprovementElements();
+    const { receive, set, spike, serve, other } = getVideoImprovementElements();
     setVideoImprovementStatus('儲存中...');
 
     try {
@@ -1248,6 +1200,7 @@ async function saveVideoImprovementGoals() {
                 set: set ? set.value.trim() : '',
                 spike: spike ? spike.value.trim() : '',
                 serve: serve ? serve.value.trim() : '',
+                other: other ? other.value.trim() : '',
             }),
         });
         const data = await response.json();
@@ -1255,8 +1208,15 @@ async function saveVideoImprovementGoals() {
             setVideoImprovementStatus(data.error || '儲存失敗');
             return;
         }
+        updateFrameAnalysisNotesCount({
+            receive: receive ? receive.value.trim() : '',
+            set: set ? set.value.trim() : '',
+            spike: spike ? spike.value.trim() : '',
+            serve: serve ? serve.value.trim() : '',
+            other: other ? other.value.trim() : '',
+        });
         const updatedAt = data.goals?.updated_at ? `，上次儲存 ${String(data.goals.updated_at).replace('T', ' ')}` : '';
-        setVideoImprovementStatus(`已儲存自己的想進步的地方${updatedAt}`);
+        setVideoImprovementStatus(`已儲存自己的筆記${updatedAt}`);
     } catch (error) {
         console.error('Failed to save video improvement goals', error);
         setVideoImprovementStatus('儲存失敗');
@@ -1264,28 +1224,23 @@ async function saveVideoImprovementGoals() {
 }
 
 function initVideoImprovementPanel() {
-    activeVideoImprovementUsername = getCurrentUsername();
     normalizeVideoImprovementPanelText();
-    applyVideoImprovementPanelState();
-    renderVideoImprovementUserOptions();
     updateVideoImprovementEditability();
-    loadVideoImprovementUsers().then(() => loadVideoImprovementGoals(activeVideoImprovementUsername));
+    loadVideoImprovementGoals();
 }
 
-function applyVideoImprovementPanelState() {
-    const body = document.getElementById('video-improvement-body');
-    const toggle = document.getElementById('video-improvement-toggle');
-    const icon = document.getElementById('video-improvement-toggle-icon');
-    if (body) body.style.display = videoImprovementPanelOpen ? 'grid' : 'none';
-    if (!toggle) return;
-    toggle.setAttribute('aria-expanded', String(videoImprovementPanelOpen));
-    toggle.title = videoImprovementPanelOpen ? '收合想進步的地方' : '展開想進步的地方';
-    if (icon) icon.textContent = videoImprovementPanelOpen ? '▴' : '▾';
+function openFrameAnalysisNotesModal() {
+    const modal = document.getElementById('frame-analysis-notes-modal');
+    if (!modal) return;
+    normalizeVideoImprovementPanelText();
+    updateVideoImprovementEditability();
+    loadVideoImprovementGoals();
+    modal.style.display = 'flex';
 }
 
-function toggleVideoImprovementPanel(forceState) {
-    videoImprovementPanelOpen = typeof forceState === 'boolean' ? forceState : !videoImprovementPanelOpen;
-    applyVideoImprovementPanelState();
+function closeFrameAnalysisNotesModal() {
+    const modal = document.getElementById('frame-analysis-notes-modal');
+    if (modal) modal.style.display = 'none';
 }
 
 function isCaptainRole() {

@@ -163,6 +163,7 @@ def get_video_improvement_goals_payload():
             "set": str(values.get("set") or "").strip(),
             "spike": str(values.get("spike") or "").strip(),
             "serve": str(values.get("serve") or "").strip(),
+            "other": str(values.get("other") or "").strip(),
             "updated_at": str(values.get("updated_at") or "").strip(),
         }
     return {"users": normalized}
@@ -1254,7 +1255,7 @@ def video_improvement_goals_api():
             requested_username = viewer_username
         values = payload["users"].get(
             requested_username,
-            {"receive": "", "set": "", "spike": "", "serve": "", "updated_at": ""},
+            {"receive": "", "set": "", "spike": "", "serve": "", "other": "", "updated_at": ""},
         )
         return jsonify(
             {
@@ -1273,6 +1274,7 @@ def video_improvement_goals_api():
         "set": str(data.get("set") or "").strip(),
         "spike": str(data.get("spike") or "").strip(),
         "serve": str(data.get("serve") or "").strip(),
+        "other": str(data.get("other") or "").strip(),
         "updated_at": datetime.now().isoformat(timespec="seconds"),
     }
     save_video_improvement_goals_payload(payload)

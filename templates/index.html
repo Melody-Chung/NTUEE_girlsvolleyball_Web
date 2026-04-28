@@ -622,6 +622,11 @@
                                 <h4 class="video-frame-dashboard__title">影片逐幀分析</h4>
                                 <p class="video-frame-dashboard__subtitle">可以上傳本機影片或貼上 YouTube 連結，透過播放、暫停、逐幀與時間跳轉來觀察動作細節。</p>
                             </div>
+                            <button type="button" class="video-section-card__meta video-frame-dashboard__notes-btn auth-only" onclick="openFrameAnalysisNotesModal()">
+                                <i class="fas fa-file-alt"></i>
+                                <span>筆記</span>
+                                <small id="frame-analysis-notes-count">0</small>
+                            </button>
                         </div>
                         <div class="video-frame-dashboard__inputs">
                             <label class="video-frame-dashboard__field">
@@ -675,42 +680,6 @@
                             <button type="button" class="court-btn frame-analysis-control" onclick="adjustFrameAnalysisTime(600)" title="往後 10 分鐘">
                                 <i class="fas fa-fast-forward"></i><span>10m</span>
                             </button>
-                        </div>
-                    </div>
-
-                    <div class="card video-improvement-card auth-only">
-                        <button type="button" class="video-improvement-card__toggle-row" id="video-improvement-toggle" onclick="toggleVideoImprovementPanel()" aria-expanded="true" aria-controls="video-improvement-body" title="&#x6536;&#x5408;&#x60f3;&#x9032;&#x6b65;&#x7684;&#x5730;&#x65b9;">
-                            <span class="video-improvement-card__toggle-label">&#x60f3;&#x9032;&#x6b65;&#x7684;&#x5730;&#x65b9;</span>
-                            <span class="video-improvement-card__toggle-icon" id="video-improvement-toggle-icon">&#x25b4;</span>
-                        </button>
-                        <div class="video-improvement-card__body" id="video-improvement-body">
-                            <p class="video-improvement-card__subtitle">&#x628a;&#x6700;&#x8fd1;&#x6700;&#x60f3;&#x4fee;&#x6b63;&#x7684;&#x52d5;&#x4f5c;&#x5beb;&#x4e0b;&#x4f86;&#xff0c;&#x65b9;&#x4fbf;&#x81ea;&#x5df1;&#x56de;&#x770b;&#xff0c;&#x4e5f;&#x65b9;&#x4fbf;&#x968a;&#x9577;&#x4e86;&#x89e3;&#x5927;&#x5bb6;&#x76ee;&#x524d;&#x5361;&#x4f4f;&#x7684;&#x5730;&#x65b9;&#x3002;</p>
-                            <div class="video-improvement-card__viewer captain-only auth-only">
-                                <label for="video-improvement-user-select">&#x67e5;&#x770b;&#x968a;&#x54e1;</label>
-                                <select id="video-improvement-user-select" class="video-control-input" onchange="handleVideoImprovementUserChange(this.value)"></select>
-                            </div>
-                            <div class="video-improvement-card__grid">
-                                <label class="video-improvement-card__field">
-                                    <span>&#x63a5;&#x7403;</span>
-                                    <textarea id="video-improvement-receive" placeholder="&#x4f8b;&#x5982;&#xff1a;&#x63a5;&#x767c;&#x6642;&#x80a9;&#x8180;&#x5bb9;&#x6613;&#x6b6a;&#x6389;&#xff0c;&#x60f3;&#x628a;&#x5e73;&#x53f0;&#x7a69;&#x5b9a;&#x4e0b;&#x4f86;&#x3002;"></textarea>
-                                </label>
-                                <label class="video-improvement-card__field">
-                                    <span>&#x8209;&#x7403;</span>
-                                    <textarea id="video-improvement-set" placeholder="&#x4f8b;&#x5982;&#xff1a;&#x60f3;&#x6539;&#x5584;&#x8209;&#x7403;&#x51fa;&#x624b;&#x9ede;&#x592a;&#x4f4e;&#x3001;&#x7403;&#x578b;&#x4e0d;&#x7a69;&#x3002;"></textarea>
-                                </label>
-                                <label class="video-improvement-card__field">
-                                    <span>&#x6263;&#x7403;</span>
-                                    <textarea id="video-improvement-spike" placeholder="&#x4f8b;&#x5982;&#xff1a;&#x52a9;&#x8dd1;&#x7bc0;&#x594f;&#x548c;&#x63ee;&#x81c2; timing &#x9084;&#x60f3;&#x518d;&#x66f4;&#x9806;&#x3002;"></textarea>
-                                </label>
-                                <label class="video-improvement-card__field">
-                                    <span>&#x767c;&#x7403;</span>
-                                    <textarea id="video-improvement-serve" placeholder="&#x4f8b;&#x5982;&#xff1a;&#x767c;&#x7403;&#x62cb;&#x7403;&#x592a;&#x524d;&#x9762;&#xff0c;&#x60f3;&#x8b93;&#x51fa;&#x624b;&#x66f4;&#x7a69;&#x5b9a;&#x3002;"></textarea>
-                                </label>
-                            </div>
-                            <div class="video-improvement-card__footer">
-                                <div class="video-improvement-card__status" id="video-improvement-status">&#x586b;&#x597d;&#x5f8c;&#x8a18;&#x5f97;&#x5132;&#x5b58;&#x3002;</div>
-                                <button type="button" class="court-btn" id="video-improvement-save-btn" onclick="saveVideoImprovementGoals()">&#x5132;&#x5b58;&#x5167;&#x5bb9;</button>
-                            </div>
                         </div>
                     </div>
 
@@ -840,6 +809,43 @@
             <div class="video-notes-modal__actions">
                 <button type="button" class="court-btn" onclick="closeVideoNotesModal()">取消</button>
                 <button type="button" class="court-btn" onclick="saveVideoNotes()">儲存</button>
+            </div>
+        </div>
+    </div>
+    <div id="frame-analysis-notes-modal" class="lightbox video-notes-modal" style="display: none;">
+        <div class="video-notes-modal__dialog">
+            <div class="video-notes-modal__header">
+                <h3>動作筆記</h3>
+                <button type="button" class="video-notes-modal__close" onclick="closeFrameAnalysisNotesModal()">&times;</button>
+            </div>
+            <div class="frame-analysis-notes-form">
+                <label class="frame-analysis-notes-field">
+                    <span>接球</span>
+                    <textarea id="video-improvement-receive" placeholder="例如：接發時肩膀容易歪掉，想把平台穩定下來。"></textarea>
+                </label>
+                <label class="frame-analysis-notes-field">
+                    <span>舉球</span>
+                    <textarea id="video-improvement-set" placeholder="例如：想改善舉球出手點太低、球型不穩。"></textarea>
+                </label>
+                <label class="frame-analysis-notes-field">
+                    <span>扣球</span>
+                    <textarea id="video-improvement-spike" placeholder="例如：助跑節奏和揮臂 timing 還想再更順。"></textarea>
+                </label>
+                <label class="frame-analysis-notes-field">
+                    <span>發球</span>
+                    <textarea id="video-improvement-serve" placeholder="例如：發球拋球太前面，想讓出手更穩定。"></textarea>
+                </label>
+                <label class="frame-analysis-notes-field">
+                    <span>其他</span>
+                    <textarea id="video-improvement-other" placeholder="例如：步伐、溝通、判斷或其他想補充的記錄。"></textarea>
+                </label>
+            </div>
+            <div class="video-notes-modal__toolbar">
+                <div class="frame-analysis-notes-status" id="video-improvement-status">填寫後記得儲存。</div>
+            </div>
+            <div class="video-notes-modal__actions">
+                <button type="button" class="court-btn" onclick="closeFrameAnalysisNotesModal()">取消</button>
+                <button type="button" class="court-btn" id="video-improvement-save-btn" onclick="saveVideoImprovementGoals()">儲存筆記</button>
             </div>
         </div>
     </div>
