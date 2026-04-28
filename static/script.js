@@ -289,12 +289,10 @@ function toggleThemeMode() {
 }
 
 function syncThemeModeButton() {
+    const isDarkMode = document.documentElement.dataset.themeMode === 'dark';
     const themeButton = document.getElementById('sidebar-theme-btn');
     if (!themeButton) return;
-
-    const isDarkMode = document.documentElement.dataset.themeMode === 'dark';
     const icon = themeButton.querySelector('i');
-
     themeButton.classList.toggle('active', isDarkMode);
     themeButton.setAttribute('aria-pressed', String(isDarkMode));
     themeButton.title = isDarkMode ? '切換白天模式' : '切換黑夜模式';
@@ -1075,7 +1073,6 @@ function initFrameAnalysisDashboard() {
 
 function getVideoImprovementElements() {
     return {
-        subtitle: document.querySelector('.video-improvement-card__subtitle'),
         receive: document.getElementById('video-improvement-receive'),
         set: document.getElementById('video-improvement-set'),
         spike: document.getElementById('video-improvement-spike'),
@@ -1104,7 +1101,7 @@ function normalizeVideoImprovementPanelText() {
     }
     if (elements.set) {
         elements.set.previousElementSibling.textContent = '舉球';
-        elements.set.placeholder = '例如：出手點太低導致球太流。';
+        elements.set.placeholder = '例如：出手點太低導致球太流';
     }
     if (elements.spike) {
         elements.spike.previousElementSibling.textContent = '扣球';

@@ -76,7 +76,7 @@
                 <button type="button" class="sidebar-pin-btn sidebar-pin-btn--sidebar" id="sidebar-pin-btn-sidebar" onclick="toggleSidebarPin()" aria-pressed="false" title="釘選側邊欄">
                     <i class="fas fa-thumbtack"></i>
                 </button>
-                <button type="button" class="sidebar-pin-btn sidebar-pin-btn--sidebar" id="sidebar-theme-btn" onclick="toggleThemeMode()" aria-pressed="false" title="切換黑夜模式">
+                <button type="button" class="sidebar-pin-btn sidebar-theme-btn" id="sidebar-theme-btn" onclick="toggleThemeMode()" aria-pressed="false" title="切換黑夜模式">
                     <i class="fas fa-moon"></i>
                 </button>
             </div>
@@ -92,6 +92,7 @@
                         <span class="sidebar-toggle__bar"></span>
                     </div>
                 </div>
+                
                 <h1 id="app-title" onclick="showSection('home')" role="button" tabindex="0" aria-label="&#x56DE;&#x5230;&#x9996;&#x9801;">台大電機女排</h1>
                 <div class="user-profile">
                     <div id="guest-zone">
@@ -665,11 +666,17 @@
                             <button type="button" class="court-btn frame-analysis-control" onclick="stepFrameAnalysisFrame(-1)" title="往前 1 frame">
                                 <i class="fas fa-chevron-left"></i><span>-F</span>
                             </button>
+                            <button type="button" class="court-btn frame-analysis-control" onclick="adjustFrameAnalysisTime(-1)" title="&#x5f80;&#x524d; 1 &#x79d2;">
+                                <i class="fas fa-angle-double-left"></i><span>1s</span>
+                            </button>
                             <button type="button" class="court-btn frame-analysis-control frame-analysis-control--primary" id="frame-analysis-play-toggle" onclick="toggleFrameAnalysisPlayback()" title="播放">
                                 <i class="fas fa-play"></i><span>播放</span>
                             </button>
                             <button type="button" class="court-btn frame-analysis-control" onclick="stepFrameAnalysisFrame(1)" title="往後 1 frame">
                                 <i class="fas fa-chevron-right"></i><span>+F</span>
+                            </button>
+                            <button type="button" class="court-btn frame-analysis-control" onclick="adjustFrameAnalysisTime(1)" title="&#x5f80;&#x5f8c; 1 &#x79d2;">
+                                <i class="fas fa-angle-double-right"></i><span>1s</span>
                             </button>
                             <button type="button" class="court-btn frame-analysis-control" onclick="adjustFrameAnalysisTime(5)" title="往後 5 秒">
                                 <i class="fas fa-redo-alt"></i><span>5s</span>

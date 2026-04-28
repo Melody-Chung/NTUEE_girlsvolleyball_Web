@@ -813,7 +813,6 @@ html[data-theme-mode="dark"] .menu-result-summary h4,
 html[data-theme-mode="dark"] .menu-result-card h4,
 html[data-theme-mode="dark"] .menu-import-panel__copy strong,
 html[data-theme-mode="dark"] .video-frame-dashboard__title,
-html[data-theme-mode="dark"] .video-improvement-card__title,
 html[data-theme-mode="dark"] .video-page-subtitle,
 html[data-theme-mode="dark"] .login-card h3 {
     color: var(--text-main);
@@ -830,8 +829,6 @@ html[data-theme-mode="dark"] .strategy-summary,
 html[data-theme-mode="dark"] .strategy-note,
 html[data-theme-mode="dark"] .video-frame-dashboard__subtitle,
 html[data-theme-mode="dark"] .video-frame-dashboard__status,
-html[data-theme-mode="dark"] .video-improvement-card__subtitle,
-html[data-theme-mode="dark"] .video-improvement-card__status,
 html[data-theme-mode="dark"] .probability-cell small,
 html[data-theme-mode="dark"] .court-history-manager__empty,
 html[data-theme-mode="dark"] .video-section-card__empty {
@@ -943,37 +940,10 @@ html[data-theme-mode="dark"] .video-frame-dashboard__field {
     color: var(--text-main);
 }
 
-html[data-theme-mode="dark"] .video-improvement-card__viewer label,
-html[data-theme-mode="dark"] .video-improvement-card__field span {
-    color: var(--text-main);
-}
-
-html[data-theme-mode="dark"] .video-improvement-card__toggle {
-    background: #101a25;
-    border-color: #2c3b4d;
-    color: #c4d6e8;
-}
-
-html[data-theme-mode="dark"] .video-improvement-card__toggle:hover {
-    background: #172331;
-    color: #edf4fb;
-}
-
 html[data-theme-mode="dark"] .video-frame-dashboard__field input[type="file"] {
     background: #101a25;
     border-color: #2c3b4d;
     color: var(--text-main);
-}
-
-html[data-theme-mode="dark"] .video-improvement-card__field textarea {
-    background: #101a25;
-    border-color: #2c3b4d;
-    color: var(--text-main);
-}
-
-html[data-theme-mode="dark"] .video-improvement-card__field textarea:disabled {
-    background: #15202c;
-    color: #b7cadc;
 }
 
 html[data-theme-mode="dark"] .video-frame-dashboard__viewer {
@@ -2345,7 +2315,7 @@ select:focus, input:focus {
 
 .video-frame-dashboard__controls {
     display: grid;
-    grid-template-columns: repeat(10, minmax(0, 1fr));
+    grid-template-columns: repeat(11, minmax(0, 1fr));
     gap: 10px;
 }
 
@@ -2451,7 +2421,7 @@ html[data-theme-mode="dark"] .frame-analysis-notes-field span {
     }
 
     .video-frame-dashboard__controls {
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(6, minmax(0, 1fr));
     }
 
 }
@@ -2472,10 +2442,6 @@ html[data-theme-mode="dark"] .frame-analysis-notes-field span {
     .frame-analysis-control {
         min-height: 42px;
         gap: 6px;
-    }
-
-    .video-improvement-card__footer {
-        align-items: stretch;
     }
 
     .video-frame-dashboard__header {
@@ -4282,7 +4248,7 @@ html, body, .app-container {
     .top-bar {
         min-height: 64px;
         height: 64px;
-        padding: 0 16px 0 72px;
+        padding: 0 16px 0 116px;
     }
 
     .sidebar-toggle-wrapper {
@@ -4680,7 +4646,7 @@ html, body, .app-container {
         height: 240px;
     }
 
-    .sidebar-pin-btn--sidebar {
+    #sidebar-pin-btn-sidebar {
         display: none !important;
     }
 
@@ -4754,7 +4720,7 @@ html, body, .app-container {
     }
 
     .top-bar {
-        padding: 0 12px 0 64px;
+        padding: 0 12px 0 108px;
     }
 
     #app-title {
