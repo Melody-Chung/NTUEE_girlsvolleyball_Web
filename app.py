@@ -7,6 +7,7 @@ import sys
 import threading
 from datetime import date, datetime
 from io import BytesIO
+from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
 from flask import Flask, jsonify, render_template, request
@@ -171,6 +172,51 @@ def get_video_improvement_goals_payload():
 
 def save_video_improvement_goals_payload(payload):
     set_system_data_json(VIDEO_IMPROVEMENT_GOALS_KEY, payload)
+
+
+def parse_youtube_resource(url):
+    raw_url = str(url or "").strip()
+    if not raw_url:
+        return None
+    if "://" not in raw_url and raw_url.startswith(("www.youtube.com", "youtube.com", "m.youtube.com", "youtu.be")):
+        raw_url = f"https://{raw_url}"
+
+    try:
+        parsed = urlparse(raw_url)
+    except ValueError:
+        return None
+
+    host = (parsed.netloc or "").lower()
+    path = parsed.path or ""
+    query = parse_qs(parsed.query or "")
+    is_youtube_host = (
+        host.endswith("youtube.com")
+        or host.endswith("youtu.be")
+        or host.endswith("youtube-nocookie.com")
+    )
+    if not is_youtube_host:
+        return None
+
+    playlist_id = (query.get("list") or [""])[0].strip()
+    video_id = ""
+    if host.endswith("youtu.be"):
+        video_id = path.strip("/").split("/")[0].strip()
+    elif "/embed/" in path:
+        video_id = path.split("/embed/", 1)[1].split("/", 1)[0].strip()
+    else:
+        video_id = (query.get("v") or [""])[0].strip()
+
+    valid_video_id = video_id if len(video_id) == 11 else ""
+    valid_playlist_id = playlist_id if playlist_id else ""
+    if not valid_video_id and not valid_playlist_id:
+        return None
+
+    return {
+        "kind": "playlist" if valid_playlist_id else "video",
+        "url": raw_url,
+        "video_id": valid_video_id,
+        "playlist_id": valid_playlist_id,
+    }
 
 
 def normalize_month_id(month_id):
@@ -1137,6 +1183,7 @@ def video_sections_api():
         return jsonify({"status": "success", "id": section_id, "title": title})
 
     migrate_unsectioned_videos()
+    saved_order = get_video_section_order()
     sections_rows = sb_select("video_sections", columns="id, title, notes_content, created_at", order_by="created_at", desc=True)
     videos_rows = sb_select("videos", columns="id, url, title, section_id", order_by="id", desc=True)
     sections = []
@@ -1165,7 +1212,7 @@ def video_sections_api():
                 {"id": row["id"], "url": row["url"], "title": row.get("title") or ""}
             )
 
-    return jsonify(sections)
+    return jsonify(sort_sections_by_saved_order(sections, saved_order))
 
 
 @app.route("/api/video_sections/<int:section_id>", methods=["PUT", "DELETE"])
@@ -1202,14 +1249,15 @@ def save_video_section_notes(section_id):
 @app.route("/add_video", methods=["POST"])
 def add_video_api():
     data = request.json or {}
-    video_url = data.get("url")
+    video_url = (data.get("url") or "").strip()
     video_title = (data.get("title") or "").strip()
     section_id = data.get("section_id")
-    if not video_url or not section_id:
-        return jsonify({"status": "error"}), 400
+    youtube_resource = parse_youtube_resource(video_url)
+    if not youtube_resource or not section_id:
+        return jsonify({"status": "error", "error": "請輸入有效的 YouTube 影片或播放清單連結。"}), 400
 
-    sb_insert("videos", {"url": video_url, "title": video_title, "section_id": section_id})
-    return jsonify({"status": "success"})
+    sb_insert("videos", {"url": youtube_resource["url"], "title": video_title, "section_id": section_id})
+    return jsonify({"status": "success", "kind": youtube_resource["kind"]})
 
 
 @app.route("/delete_video", methods=["POST"])

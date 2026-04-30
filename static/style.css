@@ -357,11 +357,16 @@ body.dragging-menu-item {
     border-color: rgba(230, 126, 34, 0.35);
 }
 
-.sidebar-pin-btn.active,
-.sidebar-theme-btn.active {
+.sidebar-pin-btn.active {
     background: var(--accent-color);
     color: #ffffff;
     border-color: var(--accent-color);
+}
+
+.sidebar-theme-btn.active {
+    background: var(--control-surface-bg);
+    color: var(--accent-color);
+    border-color: rgba(230, 126, 34, 0.35);
 }
 
 .app-container:not(.sidebar-toggled) .sidebar-pin-btn,
@@ -2163,6 +2168,26 @@ select:focus, input:focus {
     position: relative;
 }
 
+.video-preview--playlist {
+    background-color: #19324a;
+    background-image: linear-gradient(135deg, rgba(12, 27, 40, 0.86), rgba(38, 86, 122, 0.72));
+}
+
+.video-preview__badge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.78);
+    color: #fff;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
 .video-card:hover .video-preview { 
     filter: brightness(0.8); 
 }
@@ -2489,22 +2514,33 @@ html[data-theme-mode="dark"] .frame-analysis-notes-field span {
     gap: 12px;
 }
 
-#team-data .video-control-block {
+#team-data .video-control-card,
+#team-data .video-control-grid,
+#team-data .video-control-block,
+#team-data .video-control-block__header,
+#team-data .team-resource-section-grid,
+#team-data .video-add-grid {
     width: 100%;
+    max-width: none;
+}
+
+#team-data .video-control-block__header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
 }
 
 #team-data .team-resource-section-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    width: 100%;
+    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 1fr);
 }
 
 #team-data .video-add-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    width: 100%;
+    grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) minmax(320px, 1.25fr);
 }
 
 #team-data .video-control-input {
     min-width: 0;
+    box-sizing: border-box;
 }
 
 .video-sections-container {
@@ -4558,6 +4594,13 @@ html, body, .app-container {
 
     .video-add-grid,
     .team-resource-section-grid {
+        grid-template-columns: 1fr;
+    }
+
+    #team-data .video-add-grid,
+    #team-data .team-resource-section-grid {
+        width: 100%;
+        margin-left: 0;
         grid-template-columns: 1fr;
     }
 

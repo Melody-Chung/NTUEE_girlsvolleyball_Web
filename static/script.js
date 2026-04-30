@@ -259,7 +259,7 @@ function mixHex(colorA, colorB, ratio) {
 
 function syncSidebarPinButton() {
     const mainApp = document.getElementById('main-app');
-    const pinButtons = document.querySelectorAll('.sidebar-pin-btn');
+    const pinButtons = document.querySelectorAll('.sidebar-pin-btn:not(.sidebar-theme-btn)');
     if (!mainApp || pinButtons.length === 0) return;
 
     const isPinned = mainApp.classList.contains('sidebar-pinned');
@@ -752,9 +752,52 @@ const frameAnalysisState = {
 };
 
 function getYouTubeVideoId(url) {
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-    const match = String(url || '').match(regExp);
-    return (match && match[2] && match[2].length === 11) ? match[2] : null;
+    return parseYouTubeResource(url).videoId;
+}
+
+function parseYouTubeResource(url) {
+    let rawUrl = String(url || '').trim();
+    if (!rawUrl) {
+        return { kind: null, videoId: null, playlistId: null };
+    }
+    if (!rawUrl.includes('://') && /^(www\.youtube\.com|youtube\.com|m\.youtube\.com|youtu\.be)\//.test(rawUrl)) {
+        rawUrl = `https://${rawUrl}`;
+    }
+
+    let videoId = null;
+    let playlistId = null;
+
+    try {
+        const parsed = new URL(rawUrl);
+        const host = parsed.hostname.toLowerCase();
+        const isYouTubeHost = host.endsWith('youtube.com') || host.endsWith('youtu.be') || host.endsWith('youtube-nocookie.com');
+        if (!isYouTubeHost) {
+            return { kind: null, videoId: null, playlistId: null };
+        }
+
+        playlistId = parsed.searchParams.get('list') || null;
+        if (host.endsWith('youtu.be')) {
+            videoId = parsed.pathname.replace(/^\/+/, '').split('/')[0] || null;
+        } else if (parsed.pathname.includes('/embed/')) {
+            videoId = parsed.pathname.split('/embed/')[1]?.split('/')[0] || null;
+        } else {
+            videoId = parsed.searchParams.get('v') || null;
+        }
+    } catch (error) {
+        const videoMatch = rawUrl.match(/^.*(youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/);
+        const playlistMatch = rawUrl.match(/[?&]list=([^#&?]+)/);
+        videoId = (videoMatch && videoMatch[2] && videoMatch[2].length === 11) ? videoMatch[2] : null;
+        playlistId = playlistMatch && playlistMatch[1] ? playlistMatch[1] : null;
+    }
+
+    if (videoId && videoId.length !== 11) videoId = null;
+    if (!playlistId) playlistId = null;
+
+    return {
+        kind: playlistId ? 'playlist' : (videoId ? 'video' : null),
+        videoId,
+        playlistId,
+    };
 }
 
 function getFrameAnalysisElements() {
@@ -1294,12 +1337,22 @@ function updateVideoSectionSelect() {
 }
 
 function renderVideoThumbnailCard(video, sectionId) {
-    const videoId = getYouTubeVideoId(video.url);
-    const thumbnailUrl = videoId ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` : '';
-    const title = video.title && video.title.trim() ? video.title.trim() : '比賽影片';
-    const preview = videoId
-        ? `<div class="video-preview" style="background-image: url('${thumbnailUrl}'); height: 160px; background-size: cover;"></div>`
-        : `<div class="video-preview" style="height: 160px;"><span class="play-label">開啟連結</span></div>`;
+    const resource = parseYouTubeResource(video.url);
+    const isPlaylist = resource.kind === 'playlist';
+    const thumbnailUrl = resource.videoId ? `https://img.youtube.com/vi/${resource.videoId}/mqdefault.jpg` : '';
+    const title = video.title && video.title.trim()
+        ? video.title.trim()
+        : (isPlaylist ? 'YouTube 播放清單' : '比賽影片');
+    const previewClass = `video-preview${isPlaylist ? ' video-preview--playlist' : ''}`;
+    const preview = thumbnailUrl
+        ? `<div class="${previewClass}" style="background-image: url('${thumbnailUrl}'); height: 160px; background-size: cover;">
+                <span class="video-preview__badge">${isPlaylist ? '播放清單' : '影片'}</span>
+           </div>`
+        : `<div class="${previewClass}" style="height: 160px;">
+                <span class="video-preview__badge">${isPlaylist ? '播放清單' : '影片'}</span>
+                <span class="play-label">${isPlaylist ? '開啟播放清單' : '開啟影片'}</span>
+           </div>`;
+    const urlLabel = isPlaylist ? 'YouTube 播放清單' : 'YouTube 影片';
     return `
         <div class="video-card">
             <button class="delete-btn" onclick="deleteVideoItem(${video.id}, ${sectionId})">刪除</button>
@@ -1307,7 +1360,7 @@ function renderVideoThumbnailCard(video, sectionId) {
                 ${preview}
                 <div class="video-info">
                     <h5>${escapeHtml(title)}</h5>
-                    <p>${escapeHtml(video.url.length > 46 ? `${video.url.slice(0, 46)}...` : video.url)}</p>
+                    <p>${escapeHtml(urlLabel)}</p>
                 </div>
             </a>
         </div>
@@ -1344,7 +1397,7 @@ function renderVideoSections() {
             <div class="video-section-card__body">
                 ${section.videos && section.videos.length
                     ? `<div class="video-section-card__scroller">${section.videos.map((video) => renderVideoThumbnailCard(video, section.id)).join('')}</div>`
-                    : '<div class="video-section-card__empty">這個分類目前沒有影片。</div>'}
+                    : '<div class="video-section-card__empty">這個分類目前沒有影片或播放清單。</div>'}
             </div>
         </div>
     `).join('');
@@ -1647,7 +1700,7 @@ async function addVideo() {
     const sectionId = sectionSelect ? sectionSelect.value : '';
 
     if (!sectionId) return alert('請先選擇一個分類。');
-    if (!url) return alert('請輸入 YouTube 網址。');
+    if (!url) return alert('請輸入 YouTube 影片或播放清單連結。');
 
     const response = await fetch('/add_video', {
         method: 'POST',
@@ -1656,7 +1709,8 @@ async function addVideo() {
     });
 
     if (!response.ok) {
-        alert('影片儲存失敗。');
+        const data = await response.json().catch(() => ({}));
+        alert(data.error || '影片資料儲存失敗。');
         return;
     }
 
@@ -1666,7 +1720,7 @@ async function addVideo() {
 }
 
 async function deleteVideoItem(videoId, sectionId) {
-    if (!confirm('確定要從這個分類刪除這支影片嗎？')) return;
+    if (!confirm('確定要從這個分類刪除這個影片項目嗎？')) return;
     try {
         const response = await fetch('/delete_video', {
             method: 'POST',
@@ -3964,10 +4018,9 @@ async function downloadCourtTableAsPng(monthId) {
     }
 
     try {
-        const canvas = await html2canvas(target, {
+        const canvas = await captureFixedSizePngCanvas(target, {
+            width: 1600,
             backgroundColor: null,
-            scale: Math.max(window.devicePixelRatio || 1, 2),
-            useCORS: true
         });
 
         const link = document.createElement('a');
@@ -3977,6 +4030,55 @@ async function downloadCourtTableAsPng(monthId) {
     } catch (error) {
         console.error('Failed to export court table as PNG', error);
         alert('匯出 PNG 失敗，請再試一次。');
+    }
+}
+
+async function captureFixedSizePngCanvas(target, options = {}) {
+    if (!target || typeof html2canvas !== 'function') {
+        throw new Error('html2canvas is not available');
+    }
+
+    const exportWidth = Math.max(960, Number(options.width) || 1600);
+    const backgroundColor = Object.prototype.hasOwnProperty.call(options, 'backgroundColor')
+        ? options.backgroundColor
+        : '#ffffff';
+
+    const cloneWrapper = document.createElement('div');
+    cloneWrapper.style.position = 'fixed';
+    cloneWrapper.style.left = '-100000px';
+    cloneWrapper.style.top = '0';
+    cloneWrapper.style.width = `${exportWidth}px`;
+    cloneWrapper.style.maxWidth = `${exportWidth}px`;
+    cloneWrapper.style.padding = '0';
+    cloneWrapper.style.margin = '0';
+    cloneWrapper.style.background = backgroundColor || 'transparent';
+    cloneWrapper.style.zIndex = '-1';
+
+    const clone = target.cloneNode(true);
+    clone.style.width = `${exportWidth}px`;
+    clone.style.maxWidth = `${exportWidth}px`;
+    clone.style.margin = '0';
+    clone.style.boxSizing = 'border-box';
+    clone.querySelectorAll('*').forEach((element) => {
+        element.style.animation = 'none';
+        element.style.transition = 'none';
+    });
+
+    cloneWrapper.appendChild(clone);
+    document.body.appendChild(cloneWrapper);
+
+    try {
+        return await html2canvas(clone, {
+            backgroundColor,
+            scale: 2,
+            useCORS: true,
+            width: exportWidth,
+            windowWidth: exportWidth,
+            scrollX: 0,
+            scrollY: 0,
+        });
+    } finally {
+        cloneWrapper.remove();
     }
 }
 
@@ -4932,10 +5034,9 @@ async function downloadStrategyTableAsPng() {
         return;
     }
 
-    const canvas = await html2canvas(captureNode, {
+    const canvas = await captureFixedSizePngCanvas(captureNode, {
+        width: 1600,
         backgroundColor: '#ffffff',
-        scale: Math.max(window.devicePixelRatio || 1, 2),
-        useCORS: true,
     });
 
     const link = document.createElement('a');
