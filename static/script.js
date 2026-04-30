@@ -4019,7 +4019,7 @@ async function downloadCourtTableAsPng(monthId) {
 
     try {
         const canvas = await captureFixedSizePngCanvas(target, {
-            width: 1600,
+            width: 1000,
             backgroundColor: null,
         });
 
@@ -4038,7 +4038,7 @@ async function captureFixedSizePngCanvas(target, options = {}) {
         throw new Error('html2canvas is not available');
     }
 
-    const exportWidth = Math.max(960, Number(options.width) || 1600);
+    const exportWidth = Math.max(960, Number(options.width) || 1000);
     const backgroundColor = Object.prototype.hasOwnProperty.call(options, 'backgroundColor')
         ? options.backgroundColor
         : '#ffffff';
@@ -4975,7 +4975,7 @@ async function loadLotteryDashboard() {
         endInput.value = endMonth;
     }
 
-    const targetMonth = endMonth || startMonth || getMonthData(0).id;
+    const targetMonth = getMonthData(1).id;
     const probabilityWeekdays = getSelectedProbabilityWeekdays();
     const strategyWeekdays = getSelectedStrategyWeekdays();
     const probabilityCourts = getSelectedProbabilityCourts();
@@ -5011,8 +5011,9 @@ async function loadLotteryDashboard() {
             const usedHistory = (data.all_time.months_used || []).join(', ') || '無';
             summary.innerHTML = `所選區間：<strong>${escapeHtml(usedRange)}</strong><br>全部歷史：<strong>${escapeHtml(usedHistory)}</strong>`;
         }
-        const selectedStrategySummary = `所選區間：${(data.selected.months_used || []).join(', ') || '無'}`;
-        const allHistoryStrategySummary = `全部歷史：${(data.all_time.months_used || []).join(', ') || '無'}`;
+        const strategyTargetMonth = data?.strategy?.target_month || targetMonth;
+        const selectedStrategySummary = `目標月份：${strategyTargetMonth} ｜ 所選區間：${(data.selected.months_used || []).join(', ') || '無'}`;
+        const allHistoryStrategySummary = `目標月份：${strategyTargetMonth} ｜ 全部歷史：${(data.all_time.months_used || []).join(', ') || '無'}`;
         if (strategySelectedPanel) strategySelectedPanel.innerHTML = renderStrategyTable(data.strategy.selected.rows, selectedStrategySummary, strategyCourts);
         if (strategyAllPanel) strategyAllPanel.innerHTML = renderStrategyTable(data.strategy.all_time.rows, allHistoryStrategySummary, strategyCourts);
 
@@ -5035,7 +5036,7 @@ async function downloadStrategyTableAsPng() {
     }
 
     const canvas = await captureFixedSizePngCanvas(captureNode, {
-        width: 1600,
+        width: 1000,
         backgroundColor: '#ffffff',
     });
 

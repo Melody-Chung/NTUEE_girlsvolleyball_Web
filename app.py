@@ -1587,7 +1587,7 @@ def get_lottery_bids_summary():
 def get_lottery_dashboard():
     start_month = normalize_month_id(request.args.get("start_month"))
     end_month = normalize_month_id(request.args.get("end_month"))
-    target_month = normalize_month_id(request.args.get("target_month")) or get_month_id(0)
+    target_month = normalize_month_id(request.args.get("target_month")) or get_month_id(1)
     strategy_weekday_values = request.args.getlist("strategy_weekday")
     strategy_weekdays = [int(value) for value in strategy_weekday_values if str(value).isdigit()]
     strategy_include_dates = [normalize_court_date_value(value) for value in request.args.getlist("strategy_include_date")]

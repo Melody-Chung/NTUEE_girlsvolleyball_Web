@@ -4108,10 +4108,12 @@ html, body, .app-container {
 
 .strategy-bid {
     display: inline-flex;
-    min-width: 36px;
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
     justify-content: center;
     align-items: center;
-    padding: 6px 10px;
+    padding: 0;
     border-radius: 999px;
     font-weight: 700;
     border: 1px solid rgba(77, 102, 124, 0.14);
@@ -4159,7 +4161,7 @@ html, body, .app-container {
 .strategy-split-stack {
     display: grid;
     grid-template-rows: 1fr 1fr;
-    min-height: 88px;
+    min-height: 112px;
     height: 100%;
 }
 
@@ -4172,7 +4174,7 @@ html, body, .app-container {
     text-align: center;
     gap: 10px;
     padding: 6px 10px;
-    min-height: 44px;
+    min-height: 56px;
     background: transparent;
 }
 
