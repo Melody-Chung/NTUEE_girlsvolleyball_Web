@@ -25,6 +25,8 @@ html, body {
     --resource-doc-end: #1d4ed8;
     --resource-sheet-start: #16a34a;
     --resource-sheet-end: #15803d;
+    --resource-notion-start: #111827;
+    --resource-notion-end: #374151;
     --danger-color: #e74c3c;
     --danger-color-strong: #c0392b;
     --bg-color: #f0f2f5;
@@ -875,6 +877,20 @@ html[data-theme-mode="dark"] .section-reorder-handle:hover {
     background: rgba(125, 150, 175, 0.14);
 }
 
+html[data-theme-mode="dark"] .avatar-dropdown-menu .dropdown-item__content strong {
+    color: #eef4fb;
+}
+
+html[data-theme-mode="dark"] .avatar-dropdown-menu .dropdown-item__content small {
+    color: #c2d0dd;
+}
+
+html[data-theme-mode="dark"] .avatar-dropdown-menu::before {
+    background: #1f2b38;
+    border-left-color: rgba(130, 150, 170, 0.18);
+    border-top-color: rgba(130, 150, 170, 0.18);
+}
+
 html[data-theme-mode="dark"] .app-footer {
     background-color: #101923 !important;
     border-top-color: rgba(130, 150, 170, 0.15) !important;
@@ -1025,6 +1041,18 @@ html[data-theme-mode="dark"] .menu-result-summary p,
 html[data-theme-mode="dark"] .menu-empty-state,
 html[data-theme-mode="dark"] .menu-import-status {
     color: var(--text-muted) !important;
+}
+
+html[data-theme-mode="dark"] .practice-menu-board__court-badge {
+    border-color: #35506a !important;
+    background: #1e3041 !important;
+    color: #d7e7f6 !important;
+}
+
+html[data-theme-mode="dark"] .practice-menu-board__court-badge.is-empty {
+    border-color: #4a3c30 !important;
+    background: #2f261f !important;
+    color: #efc39d !important;
 }
 
 html[data-theme-mode="dark"] .menu-filter-group,
@@ -1645,6 +1673,40 @@ select:focus, input:focus {
     color: #617485;
 }
 
+.practice-menu-board__title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px 12px;
+    flex-wrap: wrap;
+}
+
+.practice-menu-board__court-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.practice-menu-board__court-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(41, 128, 185, 0.18);
+    background: rgba(41, 128, 185, 0.1);
+    color: #2a658a;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+}
+
+.practice-menu-board__court-badge.is-empty {
+    border-color: rgba(230, 126, 34, 0.16);
+    background: rgba(230, 126, 34, 0.1);
+    color: #b96a1c;
+}
+
 .practice-menu-board__summary {
     margin-bottom: 2px;
 }
@@ -2121,6 +2183,41 @@ select:focus, input:focus {
     display: flex;
     flex-direction: column;
     position: relative;
+}
+
+.video-card[draggable="true"] {
+    cursor: grab;
+}
+
+.video-card.is-video-dragging {
+    opacity: 0.58;
+    transform: scale(0.98);
+}
+
+.video-card.video-drop-before,
+.video-card.video-drop-after {
+    overflow: visible;
+}
+
+.video-card.video-drop-before::before,
+.video-card.video-drop-after::after {
+    content: '';
+    position: absolute;
+    top: 16px;
+    bottom: 16px;
+    width: 4px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #f59e0b 0%, #f97316 100%);
+    box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.14);
+    z-index: 12;
+}
+
+.video-card.video-drop-before::before {
+    left: -10px;
+}
+
+.video-card.video-drop-after::after {
+    right: -10px;
 }
 
 .video-card:hover { 
@@ -2754,6 +2851,10 @@ html[data-theme-mode="dark"] .frame-analysis-notes-field span {
 
 .resource-preview--sheet {
     background: linear-gradient(135deg, var(--resource-sheet-start) 0%, var(--resource-sheet-end) 100%);
+}
+
+.resource-preview--notion {
+    background: linear-gradient(135deg, var(--resource-notion-start) 0%, var(--resource-notion-end) 100%);
 }
 
 .resource-preview--file {

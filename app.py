@@ -313,6 +313,7 @@ def resolve_showcase_crop_path(filename):
 TEAM_RESOURCES_KEY = "team_resources"
 TEAM_RESOURCE_VISIBILITIES = {"captain", "all"}
 VIDEO_SECTION_ORDER_KEY = "video_section_order"
+VIDEO_ITEM_ORDER_KEY = "video_item_order"
 
 
 def default_team_resources_payload():
@@ -361,9 +362,15 @@ def save_team_resources_payload(payload):
     set_system_data_json(TEAM_RESOURCES_KEY, payload)
 
 
-def is_allowed_google_resource_url(url):
+def is_allowed_team_resource_url(url):
     normalized = str(url or "").strip().lower()
-    return normalized.startswith("https://docs.google.com/")
+    return (
+        normalized.startswith("https://docs.google.com/")
+        or normalized.startswith("https://www.notion.so/")
+        or normalized.startswith("https://notion.so/")
+        or normalized.startswith("https://www.notion.site/")
+        or normalized.startswith("https://notion.site/")
+    )
 
 
 def filter_team_sections_by_role(sections, role):
@@ -383,17 +390,44 @@ def save_video_section_order(order):
     set_system_data_json(VIDEO_SECTION_ORDER_KEY, normalized)
 
 
-def sort_sections_by_saved_order(sections, order):
-    order_map = {str(section_id): index for index, section_id in enumerate(order or [])}
-    ordered_sections = []
-    remaining_sections = []
-    for section in sections:
-        if str(section.get("id")) in order_map:
-            ordered_sections.append(section)
+def get_video_item_order_map():
+    payload = get_system_data_json(VIDEO_ITEM_ORDER_KEY, {})
+    if not isinstance(payload, dict):
+        return {}
+
+    normalized = {}
+    for section_id, order in payload.items():
+        if not isinstance(order, list):
+            continue
+        normalized[str(section_id)] = [int(item) for item in order if str(item).isdigit()]
+    return normalized
+
+
+def save_video_item_order_map(order_map):
+    normalized = {}
+    for section_id, order in (order_map or {}).items():
+        if not isinstance(order, list):
+            continue
+        normalized[str(section_id)] = [int(item) for item in order if str(item).isdigit()]
+    set_system_data_json(VIDEO_ITEM_ORDER_KEY, normalized)
+
+
+def sort_items_by_saved_order(items, order, get_id=lambda item: item.get("id")):
+    order_map = {str(item_id): index for index, item_id in enumerate(order or [])}
+    ordered_items = []
+    remaining_items = []
+    for item in items:
+        item_id = str(get_id(item))
+        if item_id in order_map:
+            ordered_items.append(item)
         else:
-            remaining_sections.append(section)
-    ordered_sections.sort(key=lambda section: order_map.get(str(section.get("id")), 0))
-    return ordered_sections + remaining_sections
+            remaining_items.append(item)
+    ordered_items.sort(key=lambda item: order_map.get(str(get_id(item)), 0))
+    return ordered_items + remaining_items
+
+
+def sort_sections_by_saved_order(sections, order):
+    return sort_items_by_saved_order(sections, order, lambda section: section.get("id"))
 
 
 LOTTERY_COURTS = ["Court 4", "Court 5", "Court 6", "Court 7"]
@@ -1184,6 +1218,7 @@ def video_sections_api():
 
     migrate_unsectioned_videos()
     saved_order = get_video_section_order()
+    saved_video_item_orders = get_video_item_order_map()
     sections_rows = sb_select("video_sections", columns="id, title, notes_content, created_at", order_by="created_at", desc=True)
     videos_rows = sb_select("videos", columns="id, url, title, section_id", order_by="id", desc=True)
     sections = []
@@ -1211,6 +1246,12 @@ def video_sections_api():
             section_map[section_id]["videos"].append(
                 {"id": row["id"], "url": row["url"], "title": row.get("title") or ""}
             )
+
+    for section in sections:
+        section["videos"] = sort_items_by_saved_order(
+            section.get("videos", []),
+            saved_video_item_orders.get(str(section.get("id")), []),
+        )
 
     return jsonify(sort_sections_by_saved_order(sections, saved_order))
 
@@ -1286,6 +1327,23 @@ def reorder_video_sections():
     if not isinstance(order, list):
         return jsonify({"error": "Invalid order format"}), 400
     save_video_section_order(order)
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/video_sections/<int:section_id>/videos/reorder", methods=["POST"])
+def reorder_video_items(section_id):
+    data = request.json or {}
+    order = data.get("order", [])
+    if not isinstance(order, list):
+        return jsonify({"error": "Invalid order format"}), 400
+
+    valid_video_rows = sb_select("videos", columns="id", filters=[("eq", "section_id", section_id)])
+    valid_video_ids = {int(row["id"]) for row in valid_video_rows if str(row.get("id", "")).isdigit()}
+    normalized_order = [int(item) for item in order if str(item).isdigit() and int(item) in valid_video_ids]
+
+    order_map = get_video_item_order_map()
+    order_map[str(section_id)] = normalized_order
+    save_video_item_order_map(order_map)
     return jsonify({"status": "success"})
 
 
@@ -1407,8 +1465,8 @@ def add_team_resource_item():
     section_id = (data.get("section_id") or "").strip()
     if not section_id or not url:
         return jsonify({"error": "Missing section_id or url"}), 400
-    if not is_allowed_google_resource_url(url):
-        return jsonify({"error": "Only Google Docs or Google Sheets links are allowed"}), 400
+    if not is_allowed_team_resource_url(url):
+        return jsonify({"error": "Only Google Docs, Google Sheets, or Notion links are allowed"}), 400
 
     payload = get_team_resources_payload()
     created_item = None

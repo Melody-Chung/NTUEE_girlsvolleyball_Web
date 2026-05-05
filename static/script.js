@@ -741,6 +741,7 @@ let teamResourceSectionsState = [];
 let activeTeamResourceNotesSectionId = null;
 let activeNotesScope = 'video';
 let sectionDragState = null;
+let videoCardDragState = null;
 const FRAME_ANALYSIS_FPS = 30;
 const frameAnalysisState = {
     mode: 'none',
@@ -1353,8 +1354,11 @@ function renderVideoThumbnailCard(video, sectionId) {
                 <span class="play-label">${isPlaylist ? '開啟播放清單' : '開啟影片'}</span>
            </div>`;
     const urlLabel = isPlaylist ? 'YouTube 播放清單' : 'YouTube 影片';
+    const dragAttrs = isCaptainRole()
+        ? `draggable="true" ondragstart="handleVideoCardDragStart(event, ${video.id}, ${sectionId})" ondragend="handleVideoCardDragEnd()" ondragover="handleVideoCardDragOver(event, ${video.id}, ${sectionId})" ondrop="handleVideoCardDrop(event, ${video.id}, ${sectionId})" ondragleave="handleVideoCardDragLeave(event)"`
+        : '';
     return `
-        <div class="video-card">
+        <div class="video-card" data-video-id="${video.id}" data-section-id="${sectionId}" ${dragAttrs}>
             <button class="delete-btn" onclick="deleteVideoItem(${video.id}, ${sectionId})">刪除</button>
             <a href="${escapeHtml(video.url)}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; color: inherit;">
                 ${preview}
@@ -1432,7 +1436,7 @@ function renderTeamResourceSections() {
     if (!container) return;
     const sections = Array.isArray(teamResourceSectionsState) ? teamResourceSectionsState : [];
     if (!sections.length) {
-        container.innerHTML = '<div class="card"><p style="color:#7b8c9b; margin:0;">目前還沒有球隊資料，隊長可以先建立分類並加入 Google 文件。</p></div>';
+        container.innerHTML = '<div class="card"><p style="color:#7b8c9b; margin:0;">目前還沒有球隊資料，隊長可以先建立分類並加入 Google 文件或 Notion 連結。</p></div>';
         updateTeamResourceSectionSelect();
         return;
     }
@@ -1510,7 +1514,7 @@ async function addTeamResourceItem() {
     const sectionId = sectionSelect ? sectionSelect.value : '';
 
     if (!sectionId) return alert('請先選擇資料分類。');
-    if (!url) return alert('請先貼上 Google Docs 或 Google Sheets 連結。');
+    if (!url) return alert('請先貼上 Google Docs、Google Sheets 或 Notion 連結。');
 
     const response = await fetch('/api/team_resources/items', {
         method: 'POST',
@@ -1597,6 +1601,102 @@ function handleSectionDragStart(event, scope, sectionId) {
 function handleSectionDragEnd() {
     sectionDragState = null;
     clearSectionDragIndicators();
+}
+
+function clearVideoCardDragIndicators() {
+    document.querySelectorAll('.video-card.video-drop-before, .video-card.video-drop-after, .video-card.is-video-dragging').forEach((card) => {
+        card.classList.remove('video-drop-before', 'video-drop-after', 'is-video-dragging');
+    });
+}
+
+function handleVideoCardDragStart(event, videoId, sectionId) {
+    if (!isCaptainRole()) return;
+    videoCardDragState = { kind: 'video_card', videoId: Number(videoId), sectionId: Number(sectionId) };
+    event.stopPropagation();
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', JSON.stringify(videoCardDragState));
+    const card = event.currentTarget;
+    if (card) card.classList.add('is-video-dragging');
+}
+
+function handleVideoCardDragEnd() {
+    videoCardDragState = null;
+    clearVideoCardDragIndicators();
+}
+
+function handleVideoCardDragOver(event, targetVideoId, sectionId) {
+    if (!isCaptainRole()) return;
+    if (!videoCardDragState || videoCardDragState.kind !== 'video_card') return;
+    if (videoCardDragState.sectionId !== Number(sectionId) || videoCardDragState.videoId === Number(targetVideoId)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    clearVideoCardDragIndicators();
+    const card = event.currentTarget;
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    const before = event.clientX < rect.left + (rect.width / 2);
+    card.classList.add(before ? 'video-drop-before' : 'video-drop-after');
+}
+
+function handleVideoCardDragLeave(event) {
+    const card = event.currentTarget;
+    const relatedTarget = event.relatedTarget;
+    if (card && relatedTarget && card.contains(relatedTarget)) return;
+    if (card) card.classList.remove('video-drop-before', 'video-drop-after');
+}
+
+function reorderVideoCardsInState(sectionId, draggedVideoId, targetVideoId, insertBefore) {
+    const nextSections = videoSectionsState.map((section) => {
+        if (Number(section.id) !== Number(sectionId)) return section;
+        const nextVideos = [...(section.videos || [])];
+        const fromIndex = nextVideos.findIndex((video) => Number(video.id) === Number(draggedVideoId));
+        const targetIndex = nextVideos.findIndex((video) => Number(video.id) === Number(targetVideoId));
+        if (fromIndex < 0 || targetIndex < 0) return section;
+        const [moved] = nextVideos.splice(fromIndex, 1);
+        let insertIndex = targetIndex;
+        if (!insertBefore && fromIndex < targetIndex) insertIndex = targetIndex;
+        else if (!insertBefore) insertIndex = targetIndex + 1;
+        else if (insertBefore && fromIndex < targetIndex) insertIndex = targetIndex - 1;
+        insertIndex = Math.max(0, Math.min(insertIndex, nextVideos.length));
+        nextVideos.splice(insertIndex, 0, moved);
+        return { ...section, videos: nextVideos };
+    });
+    videoSectionsState = nextSections;
+    return nextSections;
+}
+
+async function persistVideoCardOrder(sectionId) {
+    const section = videoSectionsState.find((item) => Number(item.id) === Number(sectionId));
+    if (!section) return;
+    const order = (section.videos || []).map((video) => video.id);
+    const response = await fetch(`/api/video_sections/${sectionId}/videos/reorder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order }),
+    });
+    if (!response.ok) throw new Error('Failed to reorder videos');
+}
+
+async function handleVideoCardDrop(event, targetVideoId, sectionId) {
+    if (!isCaptainRole()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+        const payload = JSON.parse(event.dataTransfer.getData('text/plain'));
+        if (!payload || payload.kind !== 'video_card') return;
+        if (Number(payload.sectionId) !== Number(sectionId) || Number(payload.videoId) === Number(targetVideoId)) return;
+        const card = event.currentTarget;
+        const rect = card.getBoundingClientRect();
+        const insertBefore = event.clientX < rect.left + (rect.width / 2);
+        reorderVideoCardsInState(sectionId, payload.videoId, targetVideoId, insertBefore);
+        renderVideoSections();
+        await persistVideoCardOrder(sectionId);
+    } catch (error) {
+        console.error('Failed to reorder video cards', error);
+        await loadVideoSections();
+    } finally {
+        handleVideoCardDragEnd();
+    }
 }
 
 function handleSectionDragOver(event, scope, sectionId) {
@@ -2635,6 +2735,32 @@ function getNextPracticeInfo(weekdays) {
     };
 }
 
+function formatPracticeCourtLabel(slotData) {
+    const label = String(slotData?.line1 || '').replace(/\s+/g, '').trim();
+    return label || '沒場';
+}
+
+function getPracticeCourtSummary(dateValue) {
+    const normalizedDate = normalizeCourtDateValue(dateValue);
+    if (!normalizedDate) {
+        return [
+            { key: 'first', label: '上半', value: '沒場', hasCourt: false },
+            { key: 'second', label: '下半', value: '沒場', hasCourt: false }
+        ];
+    }
+
+    const monthId = normalizedDate.slice(0, 7);
+    const monthRows = getCourtRowsForMonth(monthId, false);
+    const targetRow = monthRows.find((row) => normalizeCourtDateValue(row.date) === normalizedDate);
+    const firstLabel = formatPracticeCourtLabel(targetRow?.slot1);
+    const secondLabel = formatPracticeCourtLabel(targetRow?.slot2);
+
+    return [
+        { key: 'first', label: '上半', value: firstLabel, hasCourt: firstLabel !== '沒場' },
+        { key: 'second', label: '下半', value: secondLabel, hasCourt: secondLabel !== '沒場' }
+    ];
+}
+
 function renderPracticeWeekdayControls(weekdays) {
     const isCaptain = localStorage.getItem('vbt_role') === 'captain';
     if (!isCaptain) return '';
@@ -2672,12 +2798,21 @@ function renderPracticeMenuBoard() {
     const weekdays = menuState.practiceMenu.weekdays || [];
     const nextPractice = getNextPracticeInfo(weekdays);
     const titleSuffix = nextPractice.date ? ` ${nextPractice.date.slice(5)}${nextPractice.weekday ? `(${nextPractice.weekday})` : ''}` : '';
+    const courtSummary = getPracticeCourtSummary(nextPractice.date);
+    const courtBadges = nextPractice.date
+        ? `<div class="practice-menu-board__court-badges">${courtSummary.map((item) => `
+            <span class="practice-menu-board__court-badge${item.hasCourt ? ' is-booked' : ' is-empty'}">${escapeHtml(item.label)}: ${escapeHtml(item.value)}</span>
+        `).join('')}</div>`
+        : '';
 
     container.innerHTML = `
         <div class="practice-menu-board">
             <div class="strategy-panel-header practice-menu-board__summary">
                 <div>
-                    <h4 class="strategy-panel-title">本週菜單${escapeHtml(titleSuffix)}</h4>
+                    <div class="practice-menu-board__title-row">
+                        <h4 class="strategy-panel-title">本週菜單${escapeHtml(titleSuffix)}</h4>
+                        ${courtBadges}
+                    </div>
                     <p>${updatedAt ? `更新日期：${escapeHtml(updatedAt)}` : '請在下方編排並發布本週練球菜單。'}</p>
                 </div>
             </div>
@@ -2967,19 +3102,22 @@ function renderPracticeMenuDropZoneItems(halfKey) {
     `).join('');
 }
 
-function getGoogleResourceKind(url) {
+function getTeamResourceKind(url) {
     const normalized = String(url || '').toLowerCase();
+    if (normalized.includes('notion.so') || normalized.includes('notion.site')) {
+        return { label: 'Notion', icon: 'fas fa-book-open', accentClass: 'resource-preview--notion' };
+    }
     if (normalized.includes('/spreadsheets/')) {
         return { label: 'Google 試算表', icon: 'fas fa-table', accentClass: 'resource-preview--sheet' };
     }
     if (normalized.includes('/document/')) {
         return { label: 'Google 文件', icon: 'fas fa-file-alt', accentClass: 'resource-preview--doc' };
     }
-    return { label: 'Google 檔案', icon: 'fas fa-link', accentClass: 'resource-preview--file' };
+    return { label: '外部連結', icon: 'fas fa-link', accentClass: 'resource-preview--file' };
 }
 
 function renderTeamResourceCard(item, sectionId) {
-    const resourceKind = getGoogleResourceKind(item.url);
+    const resourceKind = getTeamResourceKind(item.url);
     const title = item.title && item.title.trim() ? item.title.trim() : resourceKind.label;
     return `
         <div class="video-card">
@@ -3697,6 +3835,7 @@ async function loadCourtStatus() {
     switchCourtTab(savedTab);
     
     updateCourtEditButton();
+    renderPracticeMenuBoard();
 }
 
 async function deleteMonthRecords(monthId) {
