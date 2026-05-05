@@ -366,6 +366,7 @@ def is_allowed_team_resource_url(url):
     normalized = str(url or "").strip().lower()
     return (
         normalized.startswith("https://docs.google.com/")
+        or normalized.startswith("https://forms.gle/")
         or normalized.startswith("https://www.notion.so/")
         or normalized.startswith("https://notion.so/")
         or normalized.startswith("https://www.notion.site/")
@@ -691,6 +692,11 @@ def extract_court_name(value):
     text = str(value).replace("Volleyball Court", "Court").strip()
     for court in LOTTERY_COURTS:
         if court.lower() in text.lower():
+            return court
+    compact_text = text.replace(" ", "")
+    for court in LOTTERY_COURTS:
+        court_number = court.replace("Court ", "")
+        if f"場{court_number}" in compact_text:
             return court
     return text
 
@@ -1466,7 +1472,7 @@ def add_team_resource_item():
     if not section_id or not url:
         return jsonify({"error": "Missing section_id or url"}), 400
     if not is_allowed_team_resource_url(url):
-        return jsonify({"error": "Only Google Docs, Google Sheets, or Notion links are allowed"}), 400
+        return jsonify({"error": "Only Google Docs, Google Sheets, Google Forms, or Notion links are allowed"}), 400
 
     payload = get_team_resources_payload()
     created_item = None

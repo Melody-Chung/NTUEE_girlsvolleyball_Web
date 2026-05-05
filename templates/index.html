@@ -556,6 +556,17 @@
                                 </button>
                                 <h4 class="strategy-panel-title">&#x83DC;&#x55AE;&#x7DE8;&#x6392;</h4>
                             </div>
+                            <div class="menu-builder-auto-tools">
+                                <label class="menu-inline-field menu-inline-field--compact">
+                                    <span>上半數量</span>
+                                    <input type="number" id="menu-auto-first-count" min="0" max="12" value="3">
+                                </label>
+                                <label class="menu-inline-field menu-inline-field--compact">
+                                    <span>下半數量</span>
+                                    <input type="number" id="menu-auto-second-count" min="0" max="12" value="3">
+                                </label>
+                                <button type="button" class="court-btn" onclick="autoGeneratePracticeMenu()">自動生成菜單</button>
+                            </div>
                         </div>
                         <div class="menu-builder-body" id="menu-builder-body" style="display:block;">
                             <div class="menu-builder-layout">
@@ -605,7 +616,7 @@
                                 <div class="video-add-grid">
                                     <select id="team-resource-section-select" class="video-control-input"></select>
                                     <input type="text" id="team-resource-title" placeholder="文件名稱" class="video-control-input">
-                                    <input type="text" id="team-resource-url" placeholder="Google Docs / Sheets / Notion 連結..." class="video-control-input">
+                                    <input type="text" id="team-resource-url" placeholder="Google Docs / Sheets / Forms / Notion 連結..." class="video-control-input">
                                 </div>
                             </div>
                         </div>

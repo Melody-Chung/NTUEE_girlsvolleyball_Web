@@ -1436,7 +1436,7 @@ function renderTeamResourceSections() {
     if (!container) return;
     const sections = Array.isArray(teamResourceSectionsState) ? teamResourceSectionsState : [];
     if (!sections.length) {
-        container.innerHTML = '<div class="card"><p style="color:#7b8c9b; margin:0;">目前還沒有球隊資料，隊長可以先建立分類並加入 Google 文件或 Notion 連結。</p></div>';
+        container.innerHTML = '<div class="card"><p style="color:#7b8c9b; margin:0;">目前還沒有球隊資料，隊長可以先建立分類並加入 Google 文件、Google 表單或 Notion 連結。</p></div>';
         updateTeamResourceSectionSelect();
         return;
     }
@@ -1514,7 +1514,7 @@ async function addTeamResourceItem() {
     const sectionId = sectionSelect ? sectionSelect.value : '';
 
     if (!sectionId) return alert('請先選擇資料分類。');
-    if (!url) return alert('請先貼上 Google Docs、Google Sheets 或 Notion 連結。');
+    if (!url) return alert('請先貼上 Google Docs、Google Sheets、Google Forms 或 Notion 連結。');
 
     const response = await fetch('/api/team_resources/items', {
         method: 'POST',
@@ -2588,6 +2588,139 @@ function pickRecommendedMenuRows(rows, filters) {
     return sortedRows.slice(0, filters.planSize);
 }
 
+function shuffleMenuRows(rows) {
+    const shuffled = [...rows];
+    for (let index = shuffled.length - 1; index > 0; index -= 1) {
+        const swapIndex = Math.floor(Math.random() * (index + 1));
+        [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+    }
+    return shuffled;
+}
+
+function getAutoMenuCount(inputId, fallbackValue) {
+    const value = Number.parseInt(document.getElementById(inputId)?.value || '', 10);
+    if (!Number.isFinite(value)) return fallbackValue;
+    return Math.max(0, Math.min(12, value));
+}
+
+function rowMatchesSelectedValues(rowValues, selectedValues) {
+    if (!selectedValues.length) return true;
+    return (rowValues || []).some((item) => selectedValues.includes(item));
+}
+
+function scoreAutoMenuCandidate(row, filters, targetCourtMode) {
+    let score = 0;
+    const focusMatches = row.focuses.filter((item) => filters.focuses.includes(item)).length;
+    const complexityMatches = row.complexities.filter((item) => filters.complexities.includes(item)).length;
+    const fatigueMatches = row.fatigue_levels.filter((item) => filters.fatigueLevels.includes(item)).length;
+    const difficultyMatches = row.difficulty_levels.filter((item) => filters.difficultyLevels.includes(item)).length;
+
+    if (row.court_modes.includes(targetCourtMode)) score += 80;
+    if (filters.maxPlayers && row.people_count) score += Math.max(0, 18 - Math.abs(filters.maxPlayers - row.people_count) * 3);
+    score += focusMatches * 12;
+    score += complexityMatches * 18;
+    score += fatigueMatches * 18;
+    score += difficultyMatches * 18;
+    if (filters.complexities.length && complexityMatches === 0) score -= 14;
+    if (filters.fatigueLevels.length && fatigueMatches === 0) score -= 14;
+    if (filters.difficultyLevels.length && difficultyMatches === 0) score -= 14;
+    if (filters.focuses.length && focusMatches === 0) score -= 6;
+    return score;
+}
+
+function selectAutoMenuRows(targetCount, targetCourtMode, filters, usedIds = new Set()) {
+    if (targetCount <= 0) return [];
+
+    const baseRows = menuState.rows.filter((row) => {
+        if (usedIds.has(row.id)) return false;
+        if (filters.maxPlayers && row.people_count && row.people_count > filters.maxPlayers) return false;
+        return true;
+    });
+
+    const strictRows = baseRows.filter((row) => {
+        if (!row.court_modes.includes(targetCourtMode)) return false;
+        if (!rowMatchesSelectedValues(row.focuses, filters.focuses)) return false;
+        if (!rowMatchesSelectedValues(row.complexities, filters.complexities)) return false;
+        if (!rowMatchesSelectedValues(row.fatigue_levels, filters.fatigueLevels)) return false;
+        if (!rowMatchesSelectedValues(row.difficulty_levels, filters.difficultyLevels)) return false;
+        return true;
+    });
+
+    const selected = shuffleMenuRows(strictRows).slice(0, targetCount);
+    if (selected.length >= targetCount) return selected;
+
+    const selectedIds = new Set(selected.map((row) => row.id));
+    const fallbackRows = baseRows
+        .filter((row) => !selectedIds.has(row.id))
+        .map((row) => ({ row, score: scoreAutoMenuCandidate(row, filters, targetCourtMode) }))
+        .sort((a, b) => b.score - a.score);
+
+    while (selected.length < targetCount && fallbackRows.length) {
+        const bestScore = fallbackRows[0].score;
+        const bestGroup = fallbackRows.filter((item) => item.score === bestScore);
+        const shuffledGroup = shuffleMenuRows(bestGroup);
+        const picked = shuffledGroup[0];
+        if (!picked) break;
+        selected.push(picked.row);
+        const removeId = picked.row.id;
+        for (let index = fallbackRows.length - 1; index >= 0; index -= 1) {
+            if (fallbackRows[index].row.id === removeId) {
+                fallbackRows.splice(index, 1);
+            }
+        }
+    }
+
+    return selected;
+}
+
+async function autoGeneratePracticeMenu() {
+    if (localStorage.getItem('vbt_role') !== 'captain') return;
+    if (!menuState.rows.length) {
+        alert('目前沒有可用的菜單資料庫。');
+        return;
+    }
+
+    const nextPractice = getNextPracticeInfo(menuState.practiceMenu.weekdays || []);
+    if (!nextPractice.date) {
+        alert('請先設定本週練球星期，才能自動生成菜單。');
+        return;
+    }
+
+    const firstCount = getAutoMenuCount('menu-auto-first-count', 3);
+    const secondCount = getAutoMenuCount('menu-auto-second-count', 3);
+    if (firstCount === 0 && secondCount === 0) {
+        alert('請至少設定一個上半或下半菜單數量。');
+        return;
+    }
+
+    const filters = getMenuFiltersFromUI();
+    const courtSummary = getPracticeCourtSummary(nextPractice.date);
+    const firstMode = courtSummary.find((item) => item.key === 'first')?.hasCourt ? '有場' : '沒場';
+    const secondMode = courtSummary.find((item) => item.key === 'second')?.hasCourt ? '有場' : '沒場';
+    const usedIds = new Set();
+    const firstRows = selectAutoMenuRows(firstCount, firstMode, filters, usedIds);
+    firstRows.forEach((row) => usedIds.add(row.id));
+    const secondRows = selectAutoMenuRows(secondCount, secondMode, filters, usedIds);
+
+    menuState.practiceMenu.first_half = firstRows.map((row) => ({
+        source_type: 'auto',
+        source_id: row.id || null,
+        name: row.name || '未命名訓練'
+    }));
+    menuState.practiceMenu.second_half = secondRows.map((row) => ({
+        source_type: 'auto',
+        source_id: row.id || null,
+        name: row.name || '未命名訓練'
+    }));
+
+    await savePracticeMenu();
+    await loadPracticeMenu();
+
+    if (firstRows.length < firstCount || secondRows.length < secondCount) {
+        alert(`已自動生成菜單。上半 ${firstRows.length}/${firstCount}、下半 ${secondRows.length}/${secondCount}；系統已優先使用完全符合的菜單，並從最接近條件的候選補齊，若資料庫不足則會少於設定數量。`);
+    }
+}
+
 function getMenuCourtRank(courtModes) {
     const values = new Set(courtModes || []);
     if (values.has('有場') && !values.has('沒場')) return 0;
@@ -3106,6 +3239,9 @@ function getTeamResourceKind(url) {
     const normalized = String(url || '').toLowerCase();
     if (normalized.includes('notion.so') || normalized.includes('notion.site')) {
         return { label: 'Notion', icon: 'fas fa-book-open', accentClass: 'resource-preview--notion' };
+    }
+    if (normalized.includes('/forms/') || normalized.includes('forms.gle/')) {
+        return { label: 'Google 表單', icon: 'fas fa-clipboard-list', accentClass: 'resource-preview--file' };
     }
     if (normalized.includes('/spreadsheets/')) {
         return { label: 'Google 試算表', icon: 'fas fa-table', accentClass: 'resource-preview--sheet' };

@@ -1788,6 +1788,22 @@ select:focus, input:focus {
     gap: 12px;
 }
 
+.menu-builder-auto-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 10px;
+    margin-left: auto;
+}
+
+.menu-inline-field--compact {
+    min-width: 0;
+}
+
+.menu-inline-field--compact input {
+    width: 88px;
+}
+
 .menu-builder-toggle {
     width: 40px;
     height: 40px;
@@ -1856,6 +1872,11 @@ select:focus, input:focus {
     margin-top: 3px;
     margin-left: 0;
     padding: 0 2px 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    justify-content: space-between;
+    flex-wrap: wrap;
 }
 
 .menu-builder-card .strategy-panel-title {
