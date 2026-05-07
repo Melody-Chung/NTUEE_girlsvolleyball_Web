@@ -354,6 +354,12 @@
                             <div>
                                 <h4 class="strategy-panel-title">策略分析</h4>
                             </div>
+                            <div style="margin-left: auto; padding: 5px 10px; color: #95a5a6; font-size: 0.8rem; line-height: 1.5; display: flex; align-items: center; gap: 6px;">
+                            <i class="fas fa-info-circle" style="opacity: 0.7;"></i>
+                            <span>
+                                提醒：每月 15 號記得到<a href="https://rent.pe.ntu.edu.tw/member/?U=login" target="_blank" style="color: #7f8c8d; text-decoration: underline;">台大場地管理系統</a>丟籤喔！
+                            </span>
+                            </div>
                         </div>
                         <div class="court-weekday-filter" id="strategy-court-filter">
                             <span class="court-weekday-filter__label">場地</span>
@@ -557,6 +563,12 @@
                                 <h4 class="strategy-panel-title">&#x83DC;&#x55AE;&#x7DE8;&#x6392;</h4>
                             </div>
                             <div class="menu-builder-auto-tools">
+                                <label class="menu-inline-field menu-inline-field--keyword">
+                                    <span>排除項目</span>
+                                    <input type="text" id="menu-auto-exclude-input" placeholder="例如：體能">
+                                </label>
+                                <button type="button" class="court-btn" onclick="addMenuAutoExcludeItem()">加入排除</button>
+                                <div id="menu-auto-exclude-list" class="menu-exclude-list menu-exclude-list--inline"></div>
                                 <label class="menu-inline-field menu-inline-field--compact">
                                     <span>上半數量</span>
                                     <input type="number" id="menu-auto-first-count" min="0" max="12" value="3">
@@ -662,6 +674,7 @@
                             <label for="frame-analysis-scale">影片大小</label>
                             <input type="range" id="frame-analysis-scale" min="70" max="100" step="5" value="100" oninput="setFrameAnalysisViewerScale(this.value)">
                             <span id="frame-analysis-scale-value">100%</span>
+                            <button type="button" class="court-btn video-frame-dashboard__orientation-btn" id="frame-analysis-orientation-btn" onclick="toggleFrameAnalysisOrientation()">切換為直式</button>
                         </div>
                         <div class="video-frame-dashboard__status" id="frame-analysis-status">尚未載入影片</div>
                         <div class="video-frame-dashboard__controls">

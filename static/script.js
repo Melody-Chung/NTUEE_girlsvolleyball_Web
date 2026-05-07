@@ -743,6 +743,7 @@ let activeNotesScope = 'video';
 let sectionDragState = null;
 let videoCardDragState = null;
 const FRAME_ANALYSIS_FPS = 30;
+const FRAME_ANALYSIS_ORIENTATION_KEY = 'vbt_frame_analysis_orientation';
 const frameAnalysisState = {
     mode: 'none',
     localObjectUrl: '',
@@ -750,6 +751,7 @@ const frameAnalysisState = {
     youtubeApiReady: false,
     youtubeApiPromise: null,
     viewerScale: 100,
+    viewerOrientation: 'landscape',
 };
 
 function getYouTubeVideoId(url) {
@@ -812,7 +814,53 @@ function getFrameAnalysisElements() {
         viewer: document.getElementById('frame-analysis-viewer'),
         scaleInput: document.getElementById('frame-analysis-scale'),
         scaleValue: document.getElementById('frame-analysis-scale-value'),
+        orientationButton: document.getElementById('frame-analysis-orientation-btn'),
     };
+}
+
+function getDefaultFrameAnalysisOrientation() {
+    return window.matchMedia('(max-width: 768px)').matches ? 'portrait' : 'landscape';
+}
+
+function readFrameAnalysisOrientationPreference() {
+    const saved = localStorage.getItem(FRAME_ANALYSIS_ORIENTATION_KEY);
+    return saved === 'portrait' || saved === 'landscape' ? saved : '';
+}
+
+function applyFrameAnalysisOrientation(orientation) {
+    const { viewer, orientationButton } = getFrameAnalysisElements();
+    const normalized = orientation === 'portrait' ? 'portrait' : 'landscape';
+    frameAnalysisState.viewerOrientation = normalized;
+    if (viewer) {
+        viewer.classList.toggle('is-portrait', normalized === 'portrait');
+        viewer.classList.toggle('is-landscape', normalized === 'landscape');
+    }
+    if (orientationButton) {
+        orientationButton.textContent = normalized === 'portrait' ? '切換為橫式' : '切換為直式';
+        orientationButton.setAttribute('aria-label', normalized === 'portrait' ? '切換為橫式' : '切換為直式');
+        orientationButton.title = normalized === 'portrait' ? '目前為直式' : '目前為橫式';
+    }
+}
+
+function syncFrameAnalysisOrientation(force = false) {
+    const preferred = readFrameAnalysisOrientationPreference();
+    if (preferred && !force) {
+        applyFrameAnalysisOrientation(preferred);
+        return;
+    }
+    applyFrameAnalysisOrientation(getDefaultFrameAnalysisOrientation());
+}
+
+function setFrameAnalysisOrientation(orientation, savePreference = true) {
+    applyFrameAnalysisOrientation(orientation);
+    if (savePreference) {
+        localStorage.setItem(FRAME_ANALYSIS_ORIENTATION_KEY, frameAnalysisState.viewerOrientation);
+    }
+}
+
+function toggleFrameAnalysisOrientation() {
+    const nextOrientation = frameAnalysisState.viewerOrientation === 'portrait' ? 'landscape' : 'portrait';
+    setFrameAnalysisOrientation(nextOrientation, true);
 }
 
 function applyFrameAnalysisViewerScale(scalePercent) {
@@ -1111,6 +1159,7 @@ function initFrameAnalysisDashboard() {
         fileInput.dataset.bound = 'true';
         fileInput.addEventListener('change', handleFrameAnalysisFileChange);
     }
+    syncFrameAnalysisOrientation();
     applyFrameAnalysisViewerScale(frameAnalysisState.viewerScale);
     setFrameAnalysisMode('none');
 }
@@ -2422,6 +2471,11 @@ function closeLightbox() {
 window.addEventListener('load', loadGallery);
 window.addEventListener('load', updateShowcaseCropGuide);
 window.addEventListener('resize', updateShowcaseCropGuide);
+window.addEventListener('resize', () => {
+    if (!readFrameAnalysisOrientationPreference()) {
+        syncFrameAnalysisOrientation(true);
+    }
+});
 window.addEventListener('load', initTrainingMenu);
 window.addEventListener('load', initPracticeWeekdayListeners);
 window.addEventListener('load', initPracticeMenuTouchDrag);
@@ -2450,6 +2504,7 @@ const menuState = {
 let menuBuilderDragOpenTimer = null;
 const PRACTICE_MENU_TOUCH_HOLD_MS = 240;
 const PRACTICE_MENU_TOUCH_MOVE_TOLERANCE = 12;
+const MENU_AUTO_EXCLUDE_KEY = 'vbt_menu_auto_excludes';
 const practiceMenuTouchDrag = {
     pointerId: null,
     holdTimer: null,
@@ -2465,6 +2520,78 @@ const practiceMenuTouchDrag = {
 };
 
 const PRACTICE_WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
+
+function normalizeMenuExcludeItem(value) {
+    return String(value || '').trim();
+}
+
+function readMenuAutoExcludeItems() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(MENU_AUTO_EXCLUDE_KEY) || '[]');
+        if (!Array.isArray(saved)) return [];
+        return saved
+            .map(normalizeMenuExcludeItem)
+            .filter(Boolean)
+            .filter((value, index, array) => array.indexOf(value) === index);
+    } catch (error) {
+        console.warn('Failed to parse saved menu exclude items', error);
+        return [];
+    }
+}
+
+function saveMenuAutoExcludeItems(items) {
+    const normalized = (items || [])
+        .map(normalizeMenuExcludeItem)
+        .filter(Boolean)
+        .filter((value, index, array) => array.indexOf(value) === index);
+    localStorage.setItem(MENU_AUTO_EXCLUDE_KEY, JSON.stringify(normalized));
+    renderMenuAutoExcludeItems();
+}
+
+function renderMenuAutoExcludeItems() {
+    const container = document.getElementById('menu-auto-exclude-list');
+    if (!container) return;
+    const items = readMenuAutoExcludeItems();
+    if (!items.length) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+    }
+    container.style.display = 'flex';
+    container.innerHTML = items.map((item) => `
+        <button type="button" class="menu-exclude-chip" onclick="removeMenuAutoExcludeItem('${encodeURIComponent(item)}')">
+            <span>${escapeHtml(item)}</span>
+            <strong>&times;</strong>
+        </button>
+    `).join('');
+}
+
+function addMenuAutoExcludeItem() {
+    const input = document.getElementById('menu-auto-exclude-input');
+    const value = normalizeMenuExcludeItem(input?.value || '');
+    if (!value) return;
+    const nextItems = [...readMenuAutoExcludeItems(), value];
+    saveMenuAutoExcludeItems(nextItems);
+    if (input) input.value = '';
+}
+
+function removeMenuAutoExcludeItem(encodedValue) {
+    const targetValue = decodeURIComponent(encodedValue || '');
+    const nextItems = readMenuAutoExcludeItems().filter((item) => item !== targetValue);
+    saveMenuAutoExcludeItems(nextItems);
+}
+
+function rowMatchesMenuExcludeItems(row, excludeItems) {
+    if (!excludeItems.length) return false;
+    const haystack = [
+        row.name,
+        ...(row.focuses || []),
+        ...(row.complexities || []),
+        ...(row.fatigue_levels || []),
+        ...(row.difficulty_levels || [])
+    ].join(' ').toLowerCase();
+    return excludeItems.some((item) => haystack.includes(String(item).toLowerCase()));
+}
 
 function createMenuCheckboxMarkup(name, value, label, checked = false) {
     return `
@@ -2524,6 +2651,14 @@ function initMenuFilterAutoRefresh() {
             container.addEventListener('change', generateMenu);
         }
     });
+    const excludeInput = document.getElementById('menu-auto-exclude-input');
+    if (excludeInput) {
+        excludeInput.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            addMenuAutoExcludeItem();
+        });
+    }
 }
 
 function getCheckedMenuValues(name) {
@@ -2630,10 +2765,12 @@ function scoreAutoMenuCandidate(row, filters, targetCourtMode) {
 
 function selectAutoMenuRows(targetCount, targetCourtMode, filters, usedIds = new Set()) {
     if (targetCount <= 0) return [];
+    const excludeItems = readMenuAutoExcludeItems();
 
     const baseRows = menuState.rows.filter((row) => {
         if (usedIds.has(row.id)) return false;
         if (filters.maxPlayers && row.people_count && row.people_count > filters.maxPlayers) return false;
+        if (rowMatchesMenuExcludeItems(row, excludeItems)) return false;
         return true;
     });
 
@@ -2836,7 +2973,7 @@ function renderPlanSources() {
 function createPracticeMenuBoardItem(item, halfKey, index) {
     const isCaptain = localStorage.getItem('vbt_role') === 'captain';
     return `
-        <div class="practice-menu-item">
+        <div class="practice-menu-item practice-menu-board__item" ${isCaptain ? `draggable="true" data-half-key="${halfKey}" data-index="${index}" ondragstart="handlePracticeMenuExistingDragStart(event, '${halfKey}', ${index})" ondragend="handlePracticeMenuDragEnd()"` : ''}>
             <span>${escapeHtml(item.name || '未命名訓練')}</span>
             ${isCaptain ? `<button type="button" class="practice-menu-item__remove" onclick="removePracticeMenuItem('${halfKey}', ${index})">&times;</button>` : ''}
         </div>
@@ -2951,12 +3088,12 @@ function renderPracticeMenuBoard() {
             </div>
             <div class="practice-menu-board__halves">
                 <section class="practice-menu-board__half">
-                    <div class="practice-menu-board__list">
+                    <div class="practice-menu-board__list practice-menu-drop-zone" data-half-key="first_half" ondragover="handlePracticeMenuDragOver(event)" ondragleave="handlePracticeMenuDragLeave(event)" ondrop="handlePracticeMenuDrop(event, 'first_half')">
                         ${firstHalf.length ? firstHalf.map((item, index) => createPracticeMenuBoardItem(item, 'first_half', index)).join('') : '<div class="menu-empty-state" style="margin-top:0;">目前沒有訓練。</div>'}
                     </div>
                 </section>
                 <section class="practice-menu-board__half">
-                    <div class="practice-menu-board__list">
+                    <div class="practice-menu-board__list practice-menu-drop-zone" data-half-key="second_half" ondragover="handlePracticeMenuDragOver(event)" ondragleave="handlePracticeMenuDragLeave(event)" ondrop="handlePracticeMenuDrop(event, 'second_half')">
                         ${secondHalf.length ? secondHalf.map((item, index) => createPracticeMenuBoardItem(item, 'second_half', index)).join('') : '<div class="menu-empty-state" style="margin-top:0;">目前沒有訓練。</div>'}
                     </div>
                 </section>
@@ -3063,7 +3200,7 @@ function getPracticeMenuTouchPayload(target) {
         };
     }
 
-    const existingItem = target.closest('.menu-drop-zone__item');
+    const existingItem = target.closest('.menu-drop-zone__item, .practice-menu-board__item');
     if (existingItem) {
         const halfKey = existingItem.dataset.halfKey || '';
         const index = Number(existingItem.dataset.index || -1);
@@ -3085,7 +3222,7 @@ function getPracticeMenuTouchPayload(target) {
 
 function updatePracticeMenuTouchDropTarget(clientX, clientY) {
     const target = document.elementFromPoint(clientX, clientY);
-    const zone = target ? target.closest('.menu-drop-zone') : null;
+    const zone = target ? target.closest('.menu-drop-zone, .practice-menu-drop-zone') : null;
     if (!zone) {
         practiceMenuTouchDrag.activeZone = null;
         clearPracticeMenuDropIndicators();
@@ -3216,7 +3353,7 @@ function initPracticeMenuTouchDrag() {
 
     document.addEventListener('click', (event) => {
         if (Date.now() > practiceMenuTouchDrag.suppressClickUntil) return;
-        if (!event.target.closest('.menu-source-item, .menu-drop-zone__item, .menu-drop-zone')) return;
+        if (!event.target.closest('.menu-source-item, .menu-drop-zone__item, .menu-drop-zone, .practice-menu-board__item, .practice-menu-drop-zone')) return;
         event.preventDefault();
         event.stopPropagation();
     }, true);
@@ -3423,7 +3560,7 @@ async function handlePracticeMenuDrop(event, halfKey) {
 
 function getPracticeMenuInsertIndex(zone, clientY) {
     if (!zone) return 0;
-    const items = Array.from(zone.querySelectorAll('.menu-drop-zone__item'));
+    const items = Array.from(zone.querySelectorAll('.menu-drop-zone__item, .practice-menu-board__item'));
     for (const item of items) {
         const rect = item.getBoundingClientRect();
         if (clientY < rect.top + (rect.height / 2)) {
@@ -3434,10 +3571,10 @@ function getPracticeMenuInsertIndex(zone, clientY) {
 }
 
 function clearPracticeMenuDropIndicators() {
-    document.querySelectorAll('.menu-drop-zone__item.drop-before, .menu-drop-zone__item.drop-after').forEach((item) => {
+    document.querySelectorAll('.menu-drop-zone__item.drop-before, .menu-drop-zone__item.drop-after, .practice-menu-board__item.drop-before, .practice-menu-board__item.drop-after').forEach((item) => {
         item.classList.remove('drop-before', 'drop-after');
     });
-    document.querySelectorAll('.menu-drop-zone.is-drop-target-empty').forEach((zone) => {
+    document.querySelectorAll('.menu-drop-zone.is-drop-target-empty, .practice-menu-drop-zone.is-drop-target-empty').forEach((zone) => {
         zone.classList.remove('is-drop-target-empty');
     });
 }
@@ -3445,7 +3582,7 @@ function clearPracticeMenuDropIndicators() {
 function updatePracticeMenuDropIndicator(zone, insertIndex) {
     clearPracticeMenuDropIndicators();
     if (!zone) return;
-    const items = Array.from(zone.querySelectorAll('.menu-drop-zone__item'));
+    const items = Array.from(zone.querySelectorAll('.menu-drop-zone__item, .practice-menu-board__item'));
     if (!items.length) {
         zone.classList.add('is-drop-target-empty');
         return;
@@ -3662,6 +3799,7 @@ async function deleteMenuItem() {
 async function initTrainingMenu() {
     const resultContainer = document.getElementById('menu-result');
     syncMenuBuilderVisibility();
+    renderMenuAutoExcludeItems();
     await loadPracticeMenu();
     toggleMenuBuilder(true);
     ensureMenuEditorActionsPlacement();
