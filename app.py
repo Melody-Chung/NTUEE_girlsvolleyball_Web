@@ -1077,6 +1077,12 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/api/ping", methods=["GET", "HEAD"])
+def ping():
+    # Keep the response tiny for uptime checks and cron jobs.
+    return "ok", 200, {"Content-Type": "text/plain; charset=utf-8"}
+
+
 @app.route("/api/register", methods=["POST"])
 def register():
     data = request.json or {}
