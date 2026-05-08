@@ -297,6 +297,56 @@ def set_showcase_photos(photos):
     set_system_data_json("showcase_photos", photos)
 
 
+GALLERY_PHOTO_ORDER_KEY = "gallery_photo_order"
+
+
+def normalize_filename_list(items, allowed=None):
+    allowed_set = set(allowed or [])
+    filtered = []
+    seen = set()
+    for item in items or []:
+        filename = str(item or "").strip()
+        if not filename or filename in seen:
+            continue
+        if allowed is not None and filename not in allowed_set:
+            continue
+        seen.add(filename)
+        filtered.append(filename)
+    return filtered
+
+
+def get_gallery_photo_order():
+    order = get_system_data_json(GALLERY_PHOTO_ORDER_KEY, [])
+    return normalize_filename_list(order)
+
+
+def save_gallery_photo_order(order):
+    set_system_data_json(GALLERY_PHOTO_ORDER_KEY, normalize_filename_list(order))
+
+
+def sort_gallery_rows_by_saved_order(rows):
+    rows = rows or []
+    saved_order = get_gallery_photo_order()
+    if not saved_order:
+        return rows
+
+    row_map = {row.get("filename"): row for row in rows if row.get("filename")}
+    ordered_filenames = normalize_filename_list(saved_order, allowed=row_map.keys())
+    ordered_rows = [row_map[filename] for filename in ordered_filenames]
+    remaining_rows = [row for row in rows if row.get("filename") not in set(ordered_filenames)]
+    return ordered_rows + remaining_rows
+
+
+def sort_filenames_by_gallery_order(filenames):
+    normalized = normalize_filename_list(filenames)
+    if not normalized:
+        return []
+
+    order_map = {filename: index for index, filename in enumerate(get_gallery_photo_order())}
+    fallback_map = {filename: index for index, filename in enumerate(normalized)}
+    return sorted(normalized, key=lambda filename: (order_map.get(filename, 10**9), fallback_map.get(filename, 10**9)))
+
+
 def get_showcase_crop_map():
     crop_map = get_system_data_json("showcase_photo_crops", {})
     return crop_map if isinstance(crop_map, dict) else {}
@@ -1990,6 +2040,10 @@ def upload_photo():
         sb_insert("gallery", {"filename": filename, "uploaded_by": uploader})
         saved_files.append(filename)
 
+    if saved_files:
+        current_order = get_gallery_photo_order()
+        save_gallery_photo_order(saved_files + [item for item in current_order if item not in set(saved_files)])
+
     return jsonify(
         {
             "status": "success",
@@ -2001,6 +2055,7 @@ def upload_photo():
 @app.route("/api/gallery", methods=["GET"])
 def get_gallery():
     rows = sb_select("gallery", columns="filename, uploaded_date", order_by="id", desc=True)
+    rows = sort_gallery_rows_by_saved_order(rows)
     photos = [
         {
             "filename": row["filename"],
@@ -2010,6 +2065,18 @@ def get_gallery():
         if row.get("filename")
     ]
     return jsonify(photos)
+
+
+@app.route("/api/gallery/order", methods=["POST"])
+def save_gallery_order():
+    data = request.get_json() or {}
+    requested_order = data.get("photos", [])
+    known_rows = sb_select("gallery", columns="filename", order_by="id", desc=True)
+    known_filenames = [row.get("filename") for row in known_rows if row.get("filename")]
+    normalized = normalize_filename_list(requested_order, allowed=known_filenames)
+    remaining = [filename for filename in known_filenames if filename not in set(normalized)]
+    save_gallery_photo_order(normalized + remaining)
+    return jsonify({"message": "Gallery order updated successfully"}), 200
 
 
 @app.route("/api/delete-photo", methods=["POST"])
@@ -2029,6 +2096,8 @@ def delete_photo():
         selected_photos = [item for item in selected_photos if item != filename]
         set_showcase_photos(selected_photos)
 
+    save_gallery_photo_order([item for item in get_gallery_photo_order() if item != filename])
+
     crop_map = get_showcase_crop_map()
     cropped_filename = crop_map.pop(filename, None)
     if cropped_filename:
@@ -2041,18 +2110,18 @@ def delete_photo():
 @app.route('/api/showcase_photos', methods=['GET', 'POST'])
 def handle_showcase_photos():
     if request.method == 'GET':
-        return jsonify(get_showcase_photos())
+        return jsonify(sort_filenames_by_gallery_order(get_showcase_photos()))
 
     if request.method == 'POST':
         data = request.get_json() or {}
-        selected_photos = data.get('photos', [])
+        selected_photos = normalize_filename_list(data.get('photos', []))
         set_showcase_photos(selected_photos)
         return jsonify({"message": "Showcase photos updated successfully"}), 200
 
 
 @app.route('/api/showcase_photo_assets', methods=['GET'])
 def get_showcase_photo_assets():
-    selected_photos = get_showcase_photos()
+    selected_photos = sort_filenames_by_gallery_order(get_showcase_photos())
     crop_map = get_showcase_crop_map()
     gallery_rows = {
         row["filename"]: row

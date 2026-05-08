@@ -554,6 +554,27 @@
                             </div>
                         </div>
                     </div>
+                    <div class="card menu-card captain-only auth-only">
+                        <div class="menu-builder-auto-tools">
+                            <button type="button" class="court-btn menu-builder-auto-tools__generate-btn" onclick="autoGeneratePracticeMenu()">自動生成菜單</button>
+                            <label class="menu-inline-field menu-inline-field--compact">
+                                <span>上半數量</span>
+                                <input type="number" id="menu-auto-first-count" min="0" max="12" value="3">
+                            </label>
+                            <label class="menu-inline-field menu-inline-field--compact">
+                                <span>下半數量</span>
+                                <input type="number" id="menu-auto-second-count" min="0" max="12" value="3">
+                            </label>
+                            <div class="menu-builder-auto-tools__exclude">
+                                <label class="menu-inline-field menu-inline-field--keyword">
+                                    <span>排除項目</span>
+                                    <input type="text" id="menu-auto-exclude-input" placeholder="例如：體能">
+                                </label>
+                                <button type="button" class="court-btn" onclick="addMenuAutoExcludeItem()">加入排除</button>
+                                <div id="menu-auto-exclude-list" class="menu-exclude-list menu-exclude-list--inline"></div>
+                            </div>
+                        </div>
+                    </div>
                     <div class="card menu-card captain-only auth-only menu-builder-card" id="menu-builder-card">
                         <div class="strategy-panel-header">
                             <div class="menu-builder-card__title-wrap">
@@ -561,23 +582,6 @@
                                     <i class="fas fa-columns"></i>
                                 </button>
                                 <h4 class="strategy-panel-title">&#x83DC;&#x55AE;&#x7DE8;&#x6392;</h4>
-                            </div>
-                            <div class="menu-builder-auto-tools">
-                                <label class="menu-inline-field menu-inline-field--keyword">
-                                    <span>排除項目</span>
-                                    <input type="text" id="menu-auto-exclude-input" placeholder="例如：體能">
-                                </label>
-                                <button type="button" class="court-btn" onclick="addMenuAutoExcludeItem()">加入排除</button>
-                                <div id="menu-auto-exclude-list" class="menu-exclude-list menu-exclude-list--inline"></div>
-                                <label class="menu-inline-field menu-inline-field--compact">
-                                    <span>上半數量</span>
-                                    <input type="number" id="menu-auto-first-count" min="0" max="12" value="3">
-                                </label>
-                                <label class="menu-inline-field menu-inline-field--compact">
-                                    <span>下半數量</span>
-                                    <input type="number" id="menu-auto-second-count" min="0" max="12" value="3">
-                                </label>
-                                <button type="button" class="court-btn" onclick="autoGeneratePracticeMenu()">自動生成菜單</button>
                             </div>
                         </div>
                         <div class="menu-builder-body" id="menu-builder-body" style="display:block;">

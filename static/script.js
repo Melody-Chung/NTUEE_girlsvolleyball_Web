@@ -2087,9 +2087,273 @@ async function uploadPhotos() {
         uploadBtn.disabled = false;
     }
 }
+
+const GALLERY_TOUCH_HOLD_MS = 220;
+const GALLERY_TOUCH_MOVE_TOLERANCE = 12;
+const SHOWCASE_SWIPE_THRESHOLD = 42;
+
+const gallerySortState = {
+    draggingElement: null,
+    placeholder: null,
+    pointerId: null,
+    holdTimer: null,
+    touchDragging: false,
+    startX: 0,
+    startY: 0,
+    lastX: 0,
+    lastY: 0,
+    offsetX: 0,
+    offsetY: 0,
+    suppressClickUntil: 0,
+};
+
+function clearGallerySortHold() {
+    window.clearTimeout(gallerySortState.holdTimer);
+    gallerySortState.holdTimer = null;
+}
+
+function getGalleryElement() {
+    return document.querySelector('.photo-gallery');
+}
+
+function setGallerySortingState(isSorting) {
+    const gallery = getGalleryElement();
+    if (!gallery) return;
+    gallery.classList.toggle('is-sorting', Boolean(isSorting));
+}
+
+function getGalleryOrderedFilenames() {
+    return Array.from(document.querySelectorAll('.photo-gallery .photo-card[data-filename]'))
+        .map((card) => card.dataset.filename || '')
+        .filter(Boolean);
+}
+
+async function persistGalleryOrder() {
+    const photos = getGalleryOrderedFilenames();
+    if (!photos.length) return;
+    await fetch('/api/gallery/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photos })
+    });
+    await loadShowcaseSlider();
+}
+
+function createGallerySortPlaceholder(sourceCard) {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'photo-card photo-card--placeholder';
+    placeholder.style.height = `${sourceCard.offsetHeight}px`;
+    return placeholder;
+}
+
+function getGalleryTargetCard(clientX, clientY) {
+    const target = document.elementFromPoint(clientX, clientY);
+    const card = target ? target.closest('.photo-card') : null;
+    if (!card || card === gallerySortState.draggingElement || card.classList.contains('photo-card--placeholder')) return null;
+    return card.closest('.photo-gallery') ? card : null;
+}
+
+function moveGalleryPlaceholder(clientX, clientY) {
+    const gallery = getGalleryElement();
+    const placeholder = gallerySortState.placeholder;
+    if (!gallery || !placeholder) return;
+
+    const targetCard = getGalleryTargetCard(clientX, clientY);
+    if (!targetCard) {
+        if (gallery.lastElementChild !== placeholder) {
+            gallery.appendChild(placeholder);
+        }
+        return;
+    }
+
+    const rect = targetCard.getBoundingClientRect();
+    const isUpperHalf = clientY < rect.top + (rect.height / 2);
+    const isLeftHalf = clientX < rect.left + (rect.width / 2);
+    const shouldInsertBefore = isUpperHalf || (Math.abs(clientY - (rect.top + rect.height / 2)) < rect.height * 0.2 && isLeftHalf);
+    const referenceNode = shouldInsertBefore ? targetCard : targetCard.nextSibling;
+    if (referenceNode === placeholder || placeholder.nextSibling === referenceNode) return;
+    gallery.insertBefore(placeholder, referenceNode);
+}
+
+function finalizeGalleryDragPosition() {
+    const placeholder = gallerySortState.placeholder;
+    const draggingElement = gallerySortState.draggingElement;
+    if (!placeholder || !draggingElement || !placeholder.parentElement) return false;
+    placeholder.parentElement.insertBefore(draggingElement, placeholder);
+    return true;
+}
+
+function resetGalleryDraggingStyles() {
+    const draggingElement = gallerySortState.draggingElement;
+    if (draggingElement) {
+        draggingElement.classList.remove('is-dragging', 'is-touch-dragging');
+        draggingElement.style.removeProperty('width');
+        draggingElement.style.removeProperty('height');
+        draggingElement.style.removeProperty('left');
+        draggingElement.style.removeProperty('top');
+    }
+    if (gallerySortState.placeholder) {
+        gallerySortState.placeholder.remove();
+    }
+}
+
+function resetGallerySortState() {
+    clearGallerySortHold();
+    resetGalleryDraggingStyles();
+    setGallerySortingState(false);
+    gallerySortState.draggingElement = null;
+    gallerySortState.placeholder = null;
+    gallerySortState.pointerId = null;
+    gallerySortState.touchDragging = false;
+}
+
+function startGalleryDesktopDrag(card) {
+    gallerySortState.draggingElement = card;
+    gallerySortState.placeholder = createGallerySortPlaceholder(card);
+    setGallerySortingState(true);
+    card.classList.add('is-dragging');
+    card.parentElement.insertBefore(gallerySortState.placeholder, card.nextSibling);
+}
+
+function startGalleryTouchDrag(card) {
+    const rect = card.getBoundingClientRect();
+    gallerySortState.touchDragging = true;
+    gallerySortState.placeholder = createGallerySortPlaceholder(card);
+    setGallerySortingState(true);
+    card.parentElement.insertBefore(gallerySortState.placeholder, card.nextSibling);
+    card.classList.add('is-touch-dragging');
+    card.style.width = `${rect.width}px`;
+    card.style.height = `${rect.height}px`;
+    card.style.left = `${rect.left}px`;
+    card.style.top = `${rect.top}px`;
+    gallerySortState.offsetX = gallerySortState.lastX - rect.left;
+    gallerySortState.offsetY = gallerySortState.lastY - rect.top;
+    moveGalleryTouchCard(gallerySortState.lastX, gallerySortState.lastY);
+}
+
+function moveGalleryTouchCard(clientX, clientY) {
+    const draggingElement = gallerySortState.draggingElement;
+    if (!draggingElement) return;
+    draggingElement.style.left = `${clientX - gallerySortState.offsetX}px`;
+    draggingElement.style.top = `${clientY - gallerySortState.offsetY}px`;
+}
+
+async function finishGallerySort(shouldPersist = true) {
+    const moved = finalizeGalleryDragPosition();
+    resetGallerySortState();
+    if (moved && shouldPersist) {
+        await persistGalleryOrder();
+    }
+}
+
+function initGallerySortInteractions() {
+    const gallery = getGalleryElement();
+    if (!gallery || gallery.dataset.sortBound === 'true') return;
+    gallery.dataset.sortBound = 'true';
+
+    gallery.addEventListener('dragstart', (event) => {
+        const card = event.target.closest('.photo-card');
+        if (!card || event.target.closest('button')) {
+            event.preventDefault();
+            return;
+        }
+        startGalleryDesktopDrag(card);
+        if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', card.dataset.filename || '');
+        }
+    });
+
+    gallery.addEventListener('dragover', (event) => {
+        if (!gallerySortState.draggingElement || gallerySortState.touchDragging) return;
+        event.preventDefault();
+        moveGalleryPlaceholder(event.clientX, event.clientY);
+    });
+
+    gallery.addEventListener('drop', (event) => {
+        if (!gallerySortState.draggingElement || gallerySortState.touchDragging) return;
+        event.preventDefault();
+    });
+
+    gallery.addEventListener('dragend', async () => {
+        if (!gallerySortState.draggingElement || gallerySortState.touchDragging) return;
+        await finishGallerySort(true);
+    });
+
+    gallery.addEventListener('pointerdown', (event) => {
+        if (!window.PointerEvent || event.pointerType === 'mouse' || !event.isPrimary) return;
+        if (event.target.closest('button, input, textarea, select, a, label')) return;
+        const card = event.target.closest('.photo-card');
+        if (!card) return;
+
+        clearGallerySortHold();
+        gallerySortState.draggingElement = card;
+        gallerySortState.pointerId = event.pointerId;
+        gallerySortState.startX = event.clientX;
+        gallerySortState.startY = event.clientY;
+        gallerySortState.lastX = event.clientX;
+        gallerySortState.lastY = event.clientY;
+        gallerySortState.touchDragging = false;
+        gallerySortState.holdTimer = window.setTimeout(() => {
+            gallerySortState.suppressClickUntil = Date.now() + 400;
+            startGalleryTouchDrag(card);
+            moveGalleryPlaceholder(gallerySortState.lastX, gallerySortState.lastY);
+        }, GALLERY_TOUCH_HOLD_MS);
+    }, { passive: true });
+
+    gallery.addEventListener('pointermove', (event) => {
+        if (event.pointerId !== gallerySortState.pointerId) return;
+        gallerySortState.lastX = event.clientX;
+        gallerySortState.lastY = event.clientY;
+
+        if (!gallerySortState.touchDragging) {
+            const distanceX = Math.abs(event.clientX - gallerySortState.startX);
+            const distanceY = Math.abs(event.clientY - gallerySortState.startY);
+            if (distanceX > GALLERY_TOUCH_MOVE_TOLERANCE || distanceY > GALLERY_TOUCH_MOVE_TOLERANCE) {
+                clearGallerySortHold();
+                gallerySortState.draggingElement = null;
+                gallerySortState.pointerId = null;
+            }
+            return;
+        }
+
+        event.preventDefault();
+        moveGalleryTouchCard(event.clientX, event.clientY);
+        moveGalleryPlaceholder(event.clientX, event.clientY);
+    }, { passive: false });
+
+    const finishPointerSort = async (event, shouldPersist) => {
+        if (event.pointerId !== gallerySortState.pointerId) return;
+        clearGallerySortHold();
+        const isDragging = gallerySortState.touchDragging;
+        gallerySortState.pointerId = null;
+        if (!isDragging) {
+            gallerySortState.draggingElement = null;
+            return;
+        }
+        await finishGallerySort(shouldPersist);
+    };
+
+    gallery.addEventListener('pointerup', (event) => {
+        finishPointerSort(event, true);
+    }, { passive: false });
+
+    gallery.addEventListener('pointercancel', (event) => {
+        finishPointerSort(event, false);
+    }, { passive: false });
+
+    gallery.addEventListener('click', (event) => {
+        if (Date.now() > gallerySortState.suppressClickUntil) return;
+        if (!event.target.closest('.photo-card')) return;
+        event.preventDefault();
+        event.stopPropagation();
+    }, true);
+}
+
 async function loadGallery() {
     const gallery = document.querySelector('.photo-gallery');
     if (!gallery) return;
+    initGallerySortInteractions();
 
     const currentRole = localStorage.getItem('vbt_role');
     const canDelete = currentRole === 'member' || currentRole === 'captain';
@@ -2115,6 +2379,8 @@ async function loadGallery() {
             const filename = photo.filename;
             const card = document.createElement('div');
             card.className = 'photo-card';
+            card.draggable = true;
+            card.dataset.filename = filename;
             const imgPath = photo.src;
             const isSelected = selectedPhotos.includes(filename);
             
@@ -2421,6 +2687,7 @@ async function deletePhoto(filename, btnElement) {
     
     // Remove from UI immediately for better user experience
     const card = btnElement.parentElement;
+    const gallery = card ? card.parentElement : null;
     card.remove();
 
     try {
@@ -2433,9 +2700,15 @@ async function deletePhoto(filename, btnElement) {
         if (!response.ok) {
             alert('從伺服器刪除照片失敗。');
             loadGallery(); // Reload from DB to sync UI if deletion failed
+            return;
         }
+        if (gallery && gallery.children.length === 0) {
+            gallery.innerHTML = '<p style="color:#999; grid-column: 1 / -1;">目前還沒有照片。來上傳第一張照片吧！</p>';
+        }
+        await loadShowcaseSlider();
     } catch (error) {
         console.error('Error deleting photo:', error);
+        loadGallery();
     }
 }
 
@@ -5661,6 +5934,14 @@ async function submitAnnouncements(trigger) {
 window.addEventListener('load', loadShowcaseSlider);
 
 let sliderInterval; // 宣告計時器
+let showcaseCurrentIndex = 0;
+const showcaseSwipeState = {
+    startX: 0,
+    startY: 0,
+    isPointerDown: false,
+    pointerId: null,
+    suppressClickUntil: 0,
+};
 
 async function loadShowcaseSlider() {
     const container = document.getElementById('showcase-slider-container');
@@ -5671,12 +5952,15 @@ async function loadShowcaseSlider() {
         const photos = await response.json();
 
         if (!photos || photos.length === 0) {
+            clearInterval(sliderInterval);
             container.style.display = 'none';
+            container.innerHTML = '';
             return;
         }
 
         container.style.display = 'block';
         container.innerHTML = ''; 
+        showcaseCurrentIndex = 0;
 
         let slidesHtml = '';
         let dotsHtml = '<div class="slider-dots">';
@@ -5684,12 +5968,13 @@ async function loadShowcaseSlider() {
         photos.forEach((photo, index) => {
             const imgPath = photo.src;
             const activeClass = index === 0 ? 'active' : '';
-            slidesHtml += `<img src="${imgPath}" class="showcase-slide ${activeClass}" onclick="openLightbox('${imgPath}')">`;
+            slidesHtml += `<img src="${imgPath}" class="showcase-slide ${activeClass}" draggable="false" onclick="openLightbox('${imgPath}')">`;
             dotsHtml += `<div class="dot ${activeClass}" onclick="goToSlide(${index})"></div>`;
         });
 
         dotsHtml += '</div>';
         container.innerHTML = slidesHtml + dotsHtml;
+        initShowcaseSwipe();
 
         startSliderTimer();
 
@@ -5709,15 +5994,20 @@ function nextSlide() {
     const slides = document.querySelectorAll('.showcase-slide');
     if (slides.length <= 1) return;
 
-    let currentIndex = Array.from(slides).findIndex(slide => slide.classList.contains('active'));
-    let nextIndex = (currentIndex + 1) % slides.length;
+    goToSlide((showcaseCurrentIndex + 1) % slides.length);
+}
 
-    goToSlide(nextIndex);
+function prevSlide() {
+    const slides = document.querySelectorAll('.showcase-slide');
+    if (slides.length <= 1) return;
+
+    goToSlide((showcaseCurrentIndex - 1 + slides.length) % slides.length);
 }
 
 function goToSlide(index) {
     const slides = document.querySelectorAll('.showcase-slide');
     const dots = document.querySelectorAll('.dot');
+    if (!slides.length || !dots.length || !slides[index] || !dots[index]) return;
     
     // 移除舊的 active
     slides.forEach(slide => slide.classList.remove('active'));
@@ -5726,9 +6016,84 @@ function goToSlide(index) {
     // 加上新的 active
     slides[index].classList.add('active');
     dots[index].classList.add('active');
+    showcaseCurrentIndex = index;
 
     // 重新計時 (避免使用者手動點擊後，馬上又跳下一張)
     startSliderTimer();
+}
+
+function initShowcaseSwipe() {
+    const container = document.getElementById('showcase-slider-container');
+    if (!container || container.dataset.swipeBound === 'true') return;
+    container.dataset.swipeBound = 'true';
+
+    container.addEventListener('touchstart', (event) => {
+        const touch = event.changedTouches[0];
+        if (!touch) return;
+        showcaseSwipeState.startX = touch.clientX;
+        showcaseSwipeState.startY = touch.clientY;
+    }, { passive: true });
+
+    container.addEventListener('touchend', (event) => {
+        const touch = event.changedTouches[0];
+        if (!touch) return;
+        const deltaX = touch.clientX - showcaseSwipeState.startX;
+        const deltaY = touch.clientY - showcaseSwipeState.startY;
+        if (Math.abs(deltaX) < SHOWCASE_SWIPE_THRESHOLD || Math.abs(deltaX) < Math.abs(deltaY)) return;
+        showcaseSwipeState.suppressClickUntil = Date.now() + 400;
+        if (deltaX < 0) {
+            nextSlide();
+            return;
+        }
+        prevSlide();
+    }, { passive: true });
+
+    container.addEventListener('pointerdown', (event) => {
+        if (event.pointerType !== 'mouse' || !event.isPrimary || event.button !== 0) return;
+        showcaseSwipeState.isPointerDown = true;
+        showcaseSwipeState.pointerId = event.pointerId;
+        showcaseSwipeState.startX = event.clientX;
+        showcaseSwipeState.startY = event.clientY;
+        container.classList.add('is-pointer-down');
+        container.setPointerCapture(event.pointerId);
+        event.preventDefault();
+    });
+
+    container.addEventListener('pointerup', (event) => {
+        if (event.pointerType !== 'mouse' || event.pointerId !== showcaseSwipeState.pointerId || !showcaseSwipeState.isPointerDown) return;
+        showcaseSwipeState.isPointerDown = false;
+        showcaseSwipeState.pointerId = null;
+        container.classList.remove('is-pointer-down');
+        const deltaX = event.clientX - showcaseSwipeState.startX;
+        const deltaY = event.clientY - showcaseSwipeState.startY;
+        if (Math.abs(deltaX) < SHOWCASE_SWIPE_THRESHOLD || Math.abs(deltaX) < Math.abs(deltaY)) return;
+        showcaseSwipeState.suppressClickUntil = Date.now() + 400;
+        if (deltaX < 0) {
+            nextSlide();
+            return;
+        }
+        prevSlide();
+    });
+
+    container.addEventListener('pointercancel', (event) => {
+        if (event.pointerId !== showcaseSwipeState.pointerId) return;
+        showcaseSwipeState.isPointerDown = false;
+        showcaseSwipeState.pointerId = null;
+        container.classList.remove('is-pointer-down');
+    });
+
+    container.addEventListener('lostpointercapture', () => {
+        showcaseSwipeState.isPointerDown = false;
+        showcaseSwipeState.pointerId = null;
+        container.classList.remove('is-pointer-down');
+    });
+
+    container.addEventListener('click', (event) => {
+        if (Date.now() > showcaseSwipeState.suppressClickUntil) return;
+        if (!event.target.closest('.showcase-slide')) return;
+        event.preventDefault();
+        event.stopPropagation();
+    }, true);
 }
 
 // ==========================================
