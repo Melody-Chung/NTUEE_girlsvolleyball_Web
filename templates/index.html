@@ -431,7 +431,7 @@
                             <div class="menu-import-panel">
                                 <div class="menu-import-panel__copy">
                                     <strong>匯入 CSV</strong>
-                                    <span>上傳你 notion 匯出的菜單資料庫，匯入 Supabase。</span>
+                                    <span>上傳你 <a href="https://www.notion.so/275a2199cbd48085a7a4c39f9fdcd0ae?v=275a2199cbd4802e9e5d000cd85c37ec" target="_blank">notion</a> 匯出的菜單資料庫，匯入 Supabase。</span>
                                 </div>
                                 <div class="menu-import-panel__controls">
                                     <input type="file" id="menu-import-file" accept=".csv,text/csv">
@@ -556,23 +556,15 @@
                     </div>
                     <div class="card menu-card captain-only auth-only">
                         <div class="menu-builder-auto-tools">
-                            <button type="button" class="court-btn menu-builder-auto-tools__generate-btn" onclick="autoGeneratePracticeMenu()">自動生成菜單</button>
+                            <button type="button" class="court-btn menu-builder-auto-tools__generate-btn" onclick="autoGeneratePracticeMenu()">&#x81EA;&#x52D5;&#x751F;&#x6210;&#x83DC;&#x55AE;</button>
                             <label class="menu-inline-field menu-inline-field--compact">
-                                <span>上半數量</span>
+                                <span>&#x4E0A;&#x534A;&#x83DC;&#x55AE;&#x6578;</span>
                                 <input type="number" id="menu-auto-first-count" min="0" max="12" value="3">
                             </label>
                             <label class="menu-inline-field menu-inline-field--compact">
-                                <span>下半數量</span>
+                                <span>&#x4E0B;&#x534A;&#x83DC;&#x55AE;&#x6578;</span>
                                 <input type="number" id="menu-auto-second-count" min="0" max="12" value="3">
                             </label>
-                            <div class="menu-builder-auto-tools__exclude">
-                                <label class="menu-inline-field menu-inline-field--keyword">
-                                    <span>排除項目</span>
-                                    <input type="text" id="menu-auto-exclude-input" placeholder="例如：體能">
-                                </label>
-                                <button type="button" class="court-btn" onclick="addMenuAutoExcludeItem()">加入排除</button>
-                                <div id="menu-auto-exclude-list" class="menu-exclude-list menu-exclude-list--inline"></div>
-                            </div>
                         </div>
                     </div>
                     <div class="card menu-card captain-only auth-only menu-builder-card" id="menu-builder-card">

@@ -2777,7 +2777,7 @@ const menuState = {
 let menuBuilderDragOpenTimer = null;
 const PRACTICE_MENU_TOUCH_HOLD_MS = 240;
 const PRACTICE_MENU_TOUCH_MOVE_TOLERANCE = 12;
-const MENU_AUTO_EXCLUDE_KEY = 'vbt_menu_auto_excludes';
+const DEFAULT_MENU_AUTO_EXCLUDES = ['體能'];
 const practiceMenuTouchDrag = {
     pointerId: null,
     holdTimer: null,
@@ -2794,64 +2794,8 @@ const practiceMenuTouchDrag = {
 
 const PRACTICE_WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
 
-function normalizeMenuExcludeItem(value) {
-    return String(value || '').trim();
-}
-
 function readMenuAutoExcludeItems() {
-    try {
-        const saved = JSON.parse(localStorage.getItem(MENU_AUTO_EXCLUDE_KEY) || '[]');
-        if (!Array.isArray(saved)) return [];
-        return saved
-            .map(normalizeMenuExcludeItem)
-            .filter(Boolean)
-            .filter((value, index, array) => array.indexOf(value) === index);
-    } catch (error) {
-        console.warn('Failed to parse saved menu exclude items', error);
-        return [];
-    }
-}
-
-function saveMenuAutoExcludeItems(items) {
-    const normalized = (items || [])
-        .map(normalizeMenuExcludeItem)
-        .filter(Boolean)
-        .filter((value, index, array) => array.indexOf(value) === index);
-    localStorage.setItem(MENU_AUTO_EXCLUDE_KEY, JSON.stringify(normalized));
-    renderMenuAutoExcludeItems();
-}
-
-function renderMenuAutoExcludeItems() {
-    const container = document.getElementById('menu-auto-exclude-list');
-    if (!container) return;
-    const items = readMenuAutoExcludeItems();
-    if (!items.length) {
-        container.innerHTML = '';
-        container.style.display = 'none';
-        return;
-    }
-    container.style.display = 'flex';
-    container.innerHTML = items.map((item) => `
-        <button type="button" class="menu-exclude-chip" onclick="removeMenuAutoExcludeItem('${encodeURIComponent(item)}')">
-            <span>${escapeHtml(item)}</span>
-            <strong>&times;</strong>
-        </button>
-    `).join('');
-}
-
-function addMenuAutoExcludeItem() {
-    const input = document.getElementById('menu-auto-exclude-input');
-    const value = normalizeMenuExcludeItem(input?.value || '');
-    if (!value) return;
-    const nextItems = [...readMenuAutoExcludeItems(), value];
-    saveMenuAutoExcludeItems(nextItems);
-    if (input) input.value = '';
-}
-
-function removeMenuAutoExcludeItem(encodedValue) {
-    const targetValue = decodeURIComponent(encodedValue || '');
-    const nextItems = readMenuAutoExcludeItems().filter((item) => item !== targetValue);
-    saveMenuAutoExcludeItems(nextItems);
+    return [...DEFAULT_MENU_AUTO_EXCLUDES];
 }
 
 function rowMatchesMenuExcludeItems(row, excludeItems) {
@@ -2924,14 +2868,6 @@ function initMenuFilterAutoRefresh() {
             container.addEventListener('change', generateMenu);
         }
     });
-    const excludeInput = document.getElementById('menu-auto-exclude-input');
-    if (excludeInput) {
-        excludeInput.addEventListener('keydown', (event) => {
-            if (event.key !== 'Enter') return;
-            event.preventDefault();
-            addMenuAutoExcludeItem();
-        });
-    }
 }
 
 function getCheckedMenuValues(name) {
@@ -3043,12 +2979,12 @@ function selectAutoMenuRows(targetCount, targetCourtMode, filters, usedIds = new
     const baseRows = menuState.rows.filter((row) => {
         if (usedIds.has(row.id)) return false;
         if (filters.maxPlayers && row.people_count && row.people_count > filters.maxPlayers) return false;
+        if (!row.court_modes.includes(targetCourtMode)) return false;
         if (rowMatchesMenuExcludeItems(row, excludeItems)) return false;
         return true;
     });
 
     const strictRows = baseRows.filter((row) => {
-        if (!row.court_modes.includes(targetCourtMode)) return false;
         if (!rowMatchesSelectedValues(row.focuses, filters.focuses)) return false;
         if (!rowMatchesSelectedValues(row.complexities, filters.complexities)) return false;
         if (!rowMatchesSelectedValues(row.fatigue_levels, filters.fatigueLevels)) return false;
@@ -3126,9 +3062,13 @@ async function autoGeneratePracticeMenu() {
     await savePracticeMenu();
     await loadPracticeMenu();
 
+    const fixedExcludeLabel = readMenuAutoExcludeItems().join('、');
     if (firstRows.length < firstCount || secondRows.length < secondCount) {
-        alert(`已自動生成菜單。上半 ${firstRows.length}/${firstCount}、下半 ${secondRows.length}/${secondCount}；系統已優先使用完全符合的菜單，並從最接近條件的候選補齊，若資料庫不足則會少於設定數量。`);
+        alert(`已自動生成菜單。上半套用 ${firstMode} 並排除 ${fixedExcludeLabel}，實際 ${firstRows.length}/${firstCount}；下半套用 ${secondMode} 並排除 ${fixedExcludeLabel}，實際 ${secondRows.length}/${secondCount}。系統已優先使用完全符合的菜單，並從最接近條件的候選補齊，若資料庫不足則會少於設定數量。`);
+        return;
     }
+
+    alert(`已自動生成菜單。上半套用 ${firstMode}、下半套用 ${secondMode}，並固定排除 ${fixedExcludeLabel}。`);
 }
 
 function getMenuCourtRank(courtModes) {
@@ -4072,7 +4012,6 @@ async function deleteMenuItem() {
 async function initTrainingMenu() {
     const resultContainer = document.getElementById('menu-result');
     syncMenuBuilderVisibility();
-    renderMenuAutoExcludeItems();
     await loadPracticeMenu();
     toggleMenuBuilder(true);
     ensureMenuEditorActionsPlacement();
