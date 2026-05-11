@@ -1796,30 +1796,9 @@ select:focus, input:focus {
 
 .menu-builder-auto-tools {
     display: grid;
-    grid-template-columns: auto repeat(2, minmax(88px, 108px)) minmax(280px, 1fr);
+    grid-template-columns: minmax(180px, auto) repeat(2, minmax(96px, 120px));
     gap: 12px;
     align-items: end;
-}
-
-.menu-builder-auto-tools__exclude {
-    min-width: 0;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: end;
-    justify-content: flex-start;
-    gap: 10px;
-}
-
-.menu-builder-auto-tools__note {
-    grid-column: 4;
-    padding: 10px 14px;
-    border: 1px solid #d9e3eb;
-    border-radius: 12px;
-    background: linear-gradient(180deg, #fbfdff 0%, #f4f8fb 100%);
-    color: #5b6e7f;
-    font-size: 0.85rem;
-    font-weight: 600;
-    line-height: 1.5;
 }
 
 .menu-inline-field--compact {
@@ -4492,18 +4471,9 @@ html, body, .app-container {
         align-items: stretch;
     }
 
-    .menu-builder-auto-tools__generate-btn,
-    .menu-builder-auto-tools__exclude,
-    .menu-builder-auto-tools__note {
-        grid-column: 1 / -1;
-    }
-
     .menu-builder-auto-tools__generate-btn {
+        grid-column: 1 / -1;
         width: 100%;
-    }
-
-    .menu-builder-auto-tools__exclude {
-        grid-template-columns: minmax(0, 1fr) auto;
     }
 
     .strategy-range-controls input {
@@ -5067,19 +5037,8 @@ html, body, .app-container {
         gap: 10px;
     }
 
-    .menu-builder-auto-tools__exclude {
-        grid-template-columns: 1fr;
-        align-items: stretch;
-    }
-
-    .menu-builder-auto-tools__exclude .court-btn,
     .menu-builder-auto-tools__generate-btn {
         width: 100%;
-    }
-
-    .menu-builder-auto-tools__note {
-        padding: 10px 12px;
-        font-size: 0.8rem;
     }
 
     .sidebar {
