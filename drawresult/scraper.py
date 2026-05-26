@@ -8,6 +8,7 @@ import config
 
 # Define base directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+REQUEST_TIMEOUT_SECONDS = 15
 
 def fetch_and_parse_schedule():
     session = requests.Session()
@@ -30,7 +31,13 @@ def fetch_and_parse_schedule():
         'user_pw': config.PASSWORD
     }
     try:
-        login_resp = session.post(config.LOGIN_URL, data=login_data, headers=headers, verify=False)
+        login_resp = session.post(
+            config.LOGIN_URL,
+            data=login_data,
+            headers=headers,
+            verify=False,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
         time.sleep(1)
         if login_resp.status_code != 200:
             print("Login request failed.")
@@ -42,7 +49,12 @@ def fetch_and_parse_schedule():
     # --- Step 2: Extracting security token (EnV) ---
     print("Step 2: Extracting security token (EnV)...")
     try:
-        base_resp = session.get(config.BASE_PAGE_URL, headers=headers, verify=False)
+        base_resp = session.get(
+            config.BASE_PAGE_URL,
+            headers=headers,
+            verify=False,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
         soup_base = BeautifulSoup(base_resp.text, 'html.parser')
         
         env_token = ""
@@ -92,7 +104,13 @@ def fetch_and_parse_schedule():
 
         schedule_html = ""
         try:
-            api_resp = session.post(config.SCHEDULE_API_URL, data=payload, headers=headers, verify=False, timeout=10)
+            api_resp = session.post(
+                config.SCHEDULE_API_URL,
+                data=payload,
+                headers=headers,
+                verify=False,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
             if api_resp.status_code == 200:
                 try:
                     data = api_resp.json()

@@ -3289,7 +3289,7 @@ function renderPracticeMenuBoard() {
         : '';
 
     container.innerHTML = `
-        <div class="practice-menu-board">
+        <div class="practice-menu-board" data-practice-menu-export="true">
             <div class="strategy-panel-header practice-menu-board__summary">
                 <div>
                     <div class="practice-menu-board__title-row">
@@ -3297,6 +3297,9 @@ function renderPracticeMenuBoard() {
                         ${courtBadges}
                     </div>
                     <p>${updatedAt ? `更新日期：${escapeHtml(updatedAt)}` : '請在下方編排並發布本週練球菜單。'}</p>
+                </div>
+                <div class="practice-menu-board__actions">
+                    <button type="button" class="court-btn" onclick="downloadPracticeMenuBoardAsPng()">下載 PNG</button>
                 </div>
             </div>
             <div class="practice-menu-board__halves">
@@ -4052,8 +4055,21 @@ function addAdvancedRecord() {
 // 6. Court Status & Scraper Management (融合升級版)
 // ==========================================
 
+function getServerBootstrapDate() {
+    const rawValue = window.APP_BOOTSTRAP && window.APP_BOOTSTRAP.serverToday;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(rawValue || ''))) return null;
+
+    const [year, month, day] = String(rawValue).split('-').map(Number);
+    const parsedDate = new Date(year, month - 1, day);
+    return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+}
+
+function getBaseAppDate() {
+    return getServerBootstrapDate() || new Date();
+}
+
 function getMonthData(offsetMonth = 0) {
-    const date = new Date();
+    const date = getBaseAppDate();
     date.setMonth(date.getMonth() + offsetMonth);
     const yyyy = date.getFullYear();
     const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -4061,6 +4077,8 @@ function getMonthData(offsetMonth = 0) {
 }
 
 const COURT_WEEKDAY_KEY = 'vbt_court_weekdays';
+const COURT_INCLUDED_DATES_KEY = 'vbt_court_included_dates';
+const COURT_EXCLUDED_DATES_KEY = 'vbt_court_excluded_dates';
 const COURT_WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
 const courtStatusCache = {};
 const courtEditState = {
@@ -4093,6 +4111,171 @@ function getSelectedCourtWeekdays() {
     }
 
     return getDefaultCourtWeekdays();
+}
+
+function getCourtDateFilterMap() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(COURT_INCLUDED_DATES_KEY) || '{}');
+        return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
+    } catch (error) {
+        console.warn('Failed to read saved court date filters', error);
+        return {};
+    }
+}
+
+function saveCourtDateFilterMap(nextMap) {
+    localStorage.setItem(COURT_INCLUDED_DATES_KEY, JSON.stringify(nextMap));
+}
+
+function getCourtExcludedDateFilterMap() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(COURT_EXCLUDED_DATES_KEY) || '{}');
+        return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
+    } catch (error) {
+        console.warn('Failed to read saved court excluded date filters', error);
+        return {};
+    }
+}
+
+function saveCourtExcludedDateFilterMap(nextMap) {
+    localStorage.setItem(COURT_EXCLUDED_DATES_KEY, JSON.stringify(nextMap));
+}
+
+function getCourtIncludedDates(monthId) {
+    const savedMap = getCourtDateFilterMap();
+    const values = Array.isArray(savedMap[monthId]) ? savedMap[monthId] : [];
+    return values
+        .map((value) => normalizeCourtDateValue(value))
+        .filter((value) => value && value.startsWith(`${monthId}-`))
+        .filter((value, index, array) => array.indexOf(value) === index)
+        .sort();
+}
+
+function setCourtIncludedDates(monthId, values) {
+    const savedMap = getCourtDateFilterMap();
+    const nextValues = (Array.isArray(values) ? values : [])
+        .map((value) => normalizeCourtDateValue(value))
+        .filter((value) => value && value.startsWith(`${monthId}-`))
+        .filter((value, index, array) => array.indexOf(value) === index)
+        .sort();
+    if (nextValues.length > 0) {
+        savedMap[monthId] = nextValues;
+    } else {
+        delete savedMap[monthId];
+    }
+    saveCourtDateFilterMap(savedMap);
+}
+
+function getCourtExcludedDates(monthId) {
+    const savedMap = getCourtExcludedDateFilterMap();
+    const values = Array.isArray(savedMap[monthId]) ? savedMap[monthId] : [];
+    return values
+        .map((value) => normalizeCourtDateValue(value))
+        .filter((value) => value && value.startsWith(`${monthId}-`))
+        .filter((value, index, array) => array.indexOf(value) === index)
+        .sort();
+}
+
+function setCourtExcludedDates(monthId, values) {
+    const savedMap = getCourtExcludedDateFilterMap();
+    const nextValues = (Array.isArray(values) ? values : [])
+        .map((value) => normalizeCourtDateValue(value))
+        .filter((value) => value && value.startsWith(`${monthId}-`))
+        .filter((value, index, array) => array.indexOf(value) === index)
+        .sort();
+    if (nextValues.length > 0) {
+        savedMap[monthId] = nextValues;
+    } else {
+        delete savedMap[monthId];
+    }
+    saveCourtExcludedDateFilterMap(savedMap);
+}
+
+function getCourtDatePickerId(monthId) {
+    return `court-date-picker-${monthId}`;
+}
+
+function renderCourtIncludedDateTags(monthId) {
+    const includedValues = getCourtIncludedDates(monthId);
+    const excludedValues = getCourtExcludedDates(monthId);
+    if (includedValues.length === 0 && excludedValues.length === 0) return '';
+    return `
+        <div class="court-date-tags">
+            ${includedValues.map((dateValue) => `
+                <span class="court-date-tag">
+                    <span>${escapeHtml(dateValue)}</span>
+                    <button type="button" onclick="removeCourtIncludedDate('${monthId}', '${dateValue}')">&times;</button>
+                </span>
+            `).join('')}
+            ${excludedValues.map((dateValue) => `
+                <span class="court-date-tag court-date-tag--exclude">
+                    <span>${escapeHtml(dateValue)}</span>
+                    <button type="button" onclick="removeCourtExcludedDate('${monthId}', '${dateValue}')">&times;</button>
+                </span>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderCourtDateFilterControls(monthId) {
+    const [year, month] = monthId.split('-').map(Number);
+    const lastDay = new Date(year, month, 0).getDate();
+    return `
+        <div class="court-date-panel">
+            <div class="court-date-tools">
+                <input type="date" id="${getCourtDatePickerId(monthId)}" class="court-date-picker" min="${monthId}-01" max="${monthId}-${String(lastDay).padStart(2, '0')}">
+                <button type="button" class="court-btn" onclick="addCourtIncludedDate('${monthId}')">加入日期</button>
+                <button type="button" class="court-btn" onclick="addCourtExcludedDate('${monthId}')">刪除日期</button>
+            </div>
+            ${renderCourtIncludedDateTags(monthId)}
+        </div>
+    `;
+}
+
+function addCourtIncludedDate(monthId) {
+    const picker = document.getElementById(getCourtDatePickerId(monthId));
+    const normalizedDate = normalizeCourtDateValue(picker ? picker.value : '');
+    if (!normalizedDate) {
+        alert('請先選擇日期。');
+        return;
+    }
+    if (!normalizedDate.startsWith(`${monthId}-`)) {
+        alert(`請選擇 ${monthId} 的日期。`);
+        return;
+    }
+    const nextValues = Array.from(new Set([...getCourtIncludedDates(monthId), normalizedDate])).sort();
+    setCourtIncludedDates(monthId, nextValues);
+    setCourtExcludedDates(monthId, getCourtExcludedDates(monthId).filter((value) => value !== normalizedDate));
+    refreshCourtTableByMonth(monthId);
+}
+
+function removeCourtIncludedDate(monthId, dateValue) {
+    const nextValues = getCourtIncludedDates(monthId).filter((value) => value !== dateValue);
+    setCourtIncludedDates(monthId, nextValues);
+    refreshCourtTableByMonth(monthId);
+}
+
+function addCourtExcludedDate(monthId) {
+    const picker = document.getElementById(getCourtDatePickerId(monthId));
+    const normalizedDate = normalizeCourtDateValue(picker ? picker.value : '');
+    if (!normalizedDate) {
+        alert('請先選擇日期。');
+        return;
+    }
+    if (!normalizedDate.startsWith(`${monthId}-`)) {
+        alert(`請選擇 ${monthId} 的日期。`);
+        return;
+    }
+    const nextValues = Array.from(new Set([...getCourtExcludedDates(monthId), normalizedDate])).sort();
+    setCourtExcludedDates(monthId, nextValues);
+    setCourtIncludedDates(monthId, getCourtIncludedDates(monthId).filter((value) => value !== normalizedDate));
+    refreshCourtTableByMonth(monthId);
+}
+
+function removeCourtExcludedDate(monthId, dateValue) {
+    const nextValues = getCourtExcludedDates(monthId).filter((value) => value !== dateValue);
+    setCourtExcludedDates(monthId, nextValues);
+    refreshCourtTableByMonth(monthId);
 }
 
 function initCourtWeekdayFilters() {
@@ -4129,8 +4312,11 @@ function initCourtWeekdayFilters() {
 
 function normalizeCourtDateValue(dateValue) {
     if (!dateValue) return '';
-    const match = String(dateValue).match(/\d{4}-\d{2}-\d{2}/);
-    return match ? match[0] : '';
+    const normalized = String(dateValue).trim().replace(/\//g, '-');
+    const match = normalized.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (!match) return '';
+    const [, year, month, day] = match;
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 function formatCourtDateLabel(dateObj) {
@@ -4258,10 +4444,16 @@ function getCourtDraftRows(monthId, visibleOnly = true) {
     if (!visibleOnly) return sourceRows;
 
     const selectedWeekdays = new Set(getSelectedCourtWeekdays());
+    const includedDates = new Set(getCourtIncludedDates(monthId));
+    const excludedDates = new Set(getCourtExcludedDates(monthId));
     return sourceRows.filter(row => {
         const dateValue = normalizeCourtDateValue(row.date);
         if (!dateValue) return true;
-        return selectedWeekdays.has(new Date(`${dateValue}T00:00:00`).getDay());
+        const matchesWeekday = selectedWeekdays.has(new Date(`${dateValue}T00:00:00`).getDay());
+        const matchesIncludedDate = includedDates.has(dateValue);
+        if (excludedDates.has(dateValue)) return false;
+        if (includedDates.size > 0) return matchesWeekday || matchesIncludedDate;
+        return matchesWeekday;
     });
 }
 
@@ -4413,7 +4605,7 @@ function transformCourtData(rawData) {
 
     const grouped = {};
     rawData.forEach(item => {
-        const d = item.date || item.Date;
+        const d = normalizeCourtDateValue(item.date || item.Date);
         if (!d) return;
 
         if (!grouped[d]) {
@@ -4454,6 +4646,11 @@ async function fetchAndDisplayCourt(monthId, elementId) {
         }
 
         const formattedData = transformCourtData(rawData);
+        console.log(`[court_status] ${monthId}`, {
+            rawCount: Array.isArray(rawData) ? rawData.length : 0,
+            formattedCount: formattedData.length,
+            sample: formattedData.slice(0, 3)
+        });
         const completedData = buildCourtCalendarRowsWithWeekdays(monthId, formattedData, getDefaultCourtWeekdays());
         setCourtCache(monthId, completedData);
         renderCourtTable(monthId, elementId);
@@ -4473,19 +4670,20 @@ function renderCourtTable(monthId, containerId) {
 
     let html = '';
 
-    if (isAuth) {
-        html += `
-            <div class="court-controls">
-                ${isEditing ? `
+    html += `
+        <div class="court-controls court-controls--wrap">
+            <div class="court-controls__actions">
+                ${isAuth && isEditing ? `
                     <button class="court-btn" onclick="saveCourtStatus()">儲存表格</button>
                     <button class="court-btn" onclick="toggleEditMode(false)">取消編輯</button>
                 ` : `
-                    <button class="court-btn" onclick="toggleNames()">隱藏 / 顯示名稱</button>
+                    ${isAuth ? '<button class="court-btn" onclick="toggleNames()">隱藏 / 顯示名稱</button>' : ''}
                     <button class="court-btn" onclick="downloadCourtTableAsPng('${monthId}')">下載 PNG</button>
                 `}
             </div>
-        `;
-    }
+            ${!isEditing ? renderCourtDateFilterControls(monthId) : ''}
+        </div>
+    `;
 
     html += `
         <div class="court-dashboard-container" data-court-month="${monthId}">
@@ -4502,7 +4700,8 @@ function renderCourtTable(monthId, containerId) {
     `;
 
     if (tableData.length === 0) {
-        html += `<tr><td colspan="3" style="color:#999; padding: 20px;">目前沒有場地資料。</td></tr>`;
+        const emptyMessage = getCourtIncludedDates(monthId).length > 0 ? '目前沒有符合指定日期的場地資料。' : '目前沒有場地資料。';
+        html += `<tr><td colspan="3" style="color:#999; padding: 20px;">${emptyMessage}</td></tr>`;
     } else {
         tableData.forEach((row) => {
             html += `<tr><td><strong>${row.date}</strong></td>`;
@@ -4663,7 +4862,7 @@ async function captureFixedSizePngCanvas(target, options = {}) {
         throw new Error('html2canvas is not available');
     }
 
-    const exportWidth = Math.max(960, Number(options.width) || 1000);
+    const exportWidth = Math.max(320, Number(options.width) || 1000);
     const backgroundColor = Object.prototype.hasOwnProperty.call(options, 'backgroundColor')
         ? options.backgroundColor
         : '#ffffff';
@@ -4680,6 +4879,9 @@ async function captureFixedSizePngCanvas(target, options = {}) {
     cloneWrapper.style.zIndex = '-1';
 
     const clone = target.cloneNode(true);
+    if (options.cloneClassName) {
+        clone.classList.add(options.cloneClassName);
+    }
     clone.style.width = `${exportWidth}px`;
     clone.style.maxWidth = `${exportWidth}px`;
     clone.style.margin = '0';
@@ -4704,6 +4906,34 @@ async function captureFixedSizePngCanvas(target, options = {}) {
         });
     } finally {
         cloneWrapper.remove();
+    }
+}
+
+async function downloadPracticeMenuBoardAsPng() {
+    const target = document.querySelector('[data-practice-menu-export="true"]');
+    if (!target) return;
+
+    if (typeof html2canvas !== 'function') {
+        alert('截圖功能尚未載入完成。');
+        return;
+    }
+
+    const nextPractice = getNextPracticeInfo(menuState.practiceMenu.weekdays || []);
+    const filenameDate = normalizeCourtDateValue(nextPractice.date) || menuState.practiceMenu.updated_at || 'practice-menu';
+
+    try {
+        const canvas = await captureFixedSizePngCanvas(target, {
+            width: 430,
+            backgroundColor: '#ffffff',
+            cloneClassName: 'capture-mobile-menu',
+        });
+        const link = document.createElement('a');
+        link.href = canvas.toDataURL('image/png');
+        link.download = `practice-menu-${filenameDate}.png`;
+        link.click();
+    } catch (error) {
+        console.error('Failed to export practice menu as PNG', error);
+        alert('匯出 PNG 失敗，請再試一次。');
     }
 }
 
@@ -4778,13 +5008,16 @@ async function pollScrapeStatus(targetMonth, maxAttempts = 20) {
             }
         } catch (error) {
             console.error('Error polling scrape status', error);
+            alert('查詢爬蟲狀態失敗，請稍後重新整理頁面。');
             return;
         }
     }
+
+    alert('爬蟲等待逾時，目前仍未收到完成通知。請稍後重新整理，或再試一次。');
 }
 
 function fillScrapeDateRange(monthOffset) {
-    const today = new Date();
+    const today = getBaseAppDate();
     const rangeStart = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
     const rangeEnd = new Date(today.getFullYear(), today.getMonth() + monthOffset + 1, 0);
 

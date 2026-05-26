@@ -1717,6 +1717,13 @@ select:focus, input:focus {
     margin-bottom: 2px;
 }
 
+.practice-menu-board__actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+
 .menu-card .strategy-panel-header,
 .practice-menu-board__summary {
     align-items: flex-start;
@@ -1758,6 +1765,36 @@ select:focus, input:focus {
 
 .practice-menu-next-date strong {
     color: #203444;
+}
+
+.capture-mobile-menu {
+    width: 430px !important;
+    max-width: 430px !important;
+    padding: 12px !important;
+    border: 2px solid #9fb8cd !important;
+    border-radius: 22px !important;
+    background: #ffffff !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+}
+
+.capture-mobile-menu .practice-menu-board__summary {
+    display: grid !important;
+    gap: 14px;
+}
+
+.capture-mobile-menu .practice-menu-board__halves {
+    grid-template-columns: 1fr !important;
+}
+
+.capture-mobile-menu .practice-menu-board__title-row,
+.capture-mobile-menu .practice-menu-board__court-badges,
+.capture-mobile-menu .practice-menu-board__actions {
+    width: 100%;
+}
+
+.capture-mobile-menu .practice-menu-board__actions {
+    display: none !important;
 }
 
 .menu-weekday-option--readonly {
@@ -3923,6 +3960,117 @@ html, body, .app-container {
     display: flex;
     gap: 15px;
     justify-content: center;
+}
+
+.court-controls--wrap {
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px 24px;
+}
+
+.court-controls__actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    align-items: center;
+}
+
+.court-date-panel {
+    flex: 0 1 760px;
+    display: grid;
+    gap: 12px;
+    padding: 16px 18px;
+    border: 1px solid #d9e4ec;
+    border-radius: 24px;
+    background: linear-gradient(180deg, #fcfdff 0%, #f6faff 100%);
+    box-shadow: 0 10px 24px rgba(38, 63, 87, 0.06);
+}
+
+.court-date-tools {
+    display: grid;
+    grid-template-columns: minmax(220px, 320px) repeat(2, auto);
+    align-items: center;
+    justify-content: start;
+    gap: 12px;
+    width: 100%;
+}
+
+.court-date-picker {
+    min-height: 42px;
+    width: 100%;
+    padding: 8px 18px;
+    border: 1px solid #d6dde5;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #2c3e50;
+    font: inherit;
+    box-sizing: border-box;
+}
+
+.court-date-tags {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 8px;
+    margin-top: 0;
+}
+
+.court-date-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid #d6e2eb;
+    background: #f6fbff;
+    color: #365268;
+    font-size: 0.88rem;
+    font-weight: 700;
+}
+
+.court-date-tag--exclude {
+    border-color: rgba(230, 126, 34, 0.24);
+    background: rgba(230, 126, 34, 0.1);
+    color: #b96a1c;
+}
+
+.court-date-tag button {
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+@media (max-width: 900px) {
+    .court-controls--wrap {
+        justify-content: center;
+    }
+
+    .court-controls__actions {
+        justify-content: center;
+    }
+
+    .court-date-panel {
+        width: 100%;
+        max-width: 720px;
+    }
+
+    .court-date-tools {
+        grid-template-columns: 1fr;
+        justify-items: center;
+    }
+
+    .court-date-picker {
+        max-width: 100%;
+    }
+
+    .court-date-tags {
+        justify-content: center;
+    }
 }
 
 .court-weekday-filter {

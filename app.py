@@ -5,11 +5,13 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from datetime import date, datetime
 from io import BytesIO
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
+import httpx
 from flask import Flask, jsonify, render_template, request
 from supabase import Client, create_client
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -24,6 +26,10 @@ app.secret_key = settings.SECRET_KEY
 DB_PATH = str(settings.DB_PATH)
 GALLERY_BUCKET = settings.SUPABASE_GALLERY_BUCKET
 SHOWCASE_BUCKET = settings.SUPABASE_SHOWCASE_BUCKET
+STATIC_ASSET_FILES = ("static/style.css", "static/script.js", "templates/index.html")
+SCRAPER_SUBPROCESS_TIMEOUT_SECONDS = 90
+SUPABASE_RETRY_ATTEMPTS = 3
+SUPABASE_RETRY_DELAY_SECONDS = 0.6
 supabase: Client | None = (
     create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
     if settings.SUPABASE_URL and settings.SUPABASE_KEY
@@ -35,10 +41,36 @@ def dumps_json(value):
     return json.dumps(value, ensure_ascii=False)
 
 
+def get_static_asset_version():
+    latest_mtime = 0
+    for relative_path in STATIC_ASSET_FILES:
+        abs_path = os.path.join(app.root_path, relative_path)
+        try:
+            latest_mtime = max(latest_mtime, int(os.path.getmtime(abs_path)))
+        except OSError:
+            continue
+    return latest_mtime or int(datetime.now().timestamp())
+
+
 def require_supabase() -> Client:
     if supabase is None:
         raise RuntimeError("Supabase is not configured. Set SUPABASE_URL and SUPABASE_KEY in .env.")
     return supabase
+
+
+def execute_supabase_query(query, operation_name="supabase query"):
+    last_error = None
+    for attempt in range(1, SUPABASE_RETRY_ATTEMPTS + 1):
+        try:
+            return query.execute()
+        except httpx.HTTPError as error:
+            last_error = error
+            print(f"{operation_name} failed on attempt {attempt}/{SUPABASE_RETRY_ATTEMPTS}: {error}")
+            if attempt >= SUPABASE_RETRY_ATTEMPTS:
+                raise
+            time.sleep(SUPABASE_RETRY_DELAY_SECONDS * attempt)
+    if last_error:
+        raise last_error
 
 
 def _apply_filters(query, filters=None):
@@ -63,7 +95,7 @@ def sb_select(table, columns="*", filters=None, order_by=None, desc=False, limit
         query = query.order(order_by, desc=desc)
     if limit is not None:
         query = query.limit(limit)
-    response = query.execute()
+    response = execute_supabase_query(query, f"select {table}")
     return response.data or []
 
 
@@ -73,26 +105,28 @@ def sb_select_one(table, columns="*", filters=None, order_by=None, desc=False):
 
 
 def sb_insert(table, payload):
-    response = require_supabase().table(table).insert(payload).execute()
+    query = require_supabase().table(table).insert(payload)
+    response = execute_supabase_query(query, f"insert {table}")
     return response.data or []
 
 
 def sb_upsert(table, payload, on_conflict=None):
-    response = require_supabase().table(table).upsert(payload, on_conflict=on_conflict).execute()
+    query = require_supabase().table(table).upsert(payload, on_conflict=on_conflict)
+    response = execute_supabase_query(query, f"upsert {table}")
     return response.data or []
 
 
 def sb_update(table, values, filters=None):
     query = require_supabase().table(table).update(values)
     query = _apply_filters(query, filters)
-    response = query.execute()
+    response = execute_supabase_query(query, f"update {table}")
     return response.data or []
 
 
 def sb_delete(table, filters=None):
     query = require_supabase().table(table).delete()
     query = _apply_filters(query, filters)
-    response = query.execute()
+    response = execute_supabase_query(query, f"delete {table}")
     return response.data or []
 
 
@@ -1074,7 +1108,11 @@ init_menu_drills_table()
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template(
+        "index.html",
+        server_today=date.today().isoformat(),
+        static_asset_version=get_static_asset_version(),
+    )
 
 
 @app.route("/api/ping", methods=["GET", "HEAD"])
@@ -1679,28 +1717,32 @@ def save_lottery_bids():
 
 @app.route("/api/lottery_bids_summary", methods=["GET"])
 def get_lottery_bids_summary():
-    summary = []
-    month_ids = sorted(
-        set(fetch_existing_month_ids("lottery_bids")) | set(fetch_existing_month_ids("court_status")),
-        reverse=True,
-    )
-    for month_id in month_ids:
-        bid_content = fetch_month_content("lottery_bids", month_id)
-        court_content = fetch_month_content("court_status", month_id)
-        bid_rows = build_lottery_month_rows(month_id, parse_json_array(bid_content)) if bid_content is not None else []
-        court_rows = parse_court_status_rows(court_content) if court_content is not None else []
-        has_bid_data = len(bid_rows) > 0
-        has_court_data = len(court_rows) > 0
-        summary.append(
-            {
-                "month_id": month_id,
-                "total_bids": count_lottery_bids(bid_rows),
-                "has_bid_data": has_bid_data,
-                "has_court_data": has_court_data,
-            }
+    try:
+        summary = []
+        month_ids = sorted(
+            set(fetch_existing_month_ids("lottery_bids")) | set(fetch_existing_month_ids("court_status")),
+            reverse=True,
         )
+        for month_id in month_ids:
+            bid_content = fetch_month_content("lottery_bids", month_id)
+            court_content = fetch_month_content("court_status", month_id)
+            bid_rows = build_lottery_month_rows(month_id, parse_json_array(bid_content)) if bid_content is not None else []
+            court_rows = parse_court_status_rows(court_content) if court_content is not None else []
+            has_bid_data = len(bid_rows) > 0
+            has_court_data = len(court_rows) > 0
+            summary.append(
+                {
+                    "month_id": month_id,
+                    "total_bids": count_lottery_bids(bid_rows),
+                    "has_bid_data": has_bid_data,
+                    "has_court_data": has_court_data,
+                }
+            )
 
-    return jsonify({"months": summary})
+        return jsonify({"months": summary})
+    except httpx.HTTPError as error:
+        print(f"Failed to build lottery bids summary: {error}")
+        return jsonify({"months": [], "error": "暫時無法讀取投籤摘要，請稍後再試。"}), 503
 
 
 @app.route("/api/lottery_dashboard", methods=["GET"])
@@ -1934,6 +1976,7 @@ def trigger_scrape():
                 text=True,
                 cwd="drawresult",
                 errors="replace",
+                timeout=SCRAPER_SUBPROCESS_TIMEOUT_SECONDS,
             )
             print("Scraper finished. Output:")
             print(result.stdout)
@@ -1966,6 +2009,20 @@ def trigger_scrape():
                     )
             else:
                 set_scrape_status("success", "Scraper completed successfully.", target_month or "")
+        except subprocess.TimeoutExpired:
+            print(f"Scraper timed out after {SCRAPER_SUBPROCESS_TIMEOUT_SECONDS} seconds.")
+            if get_saved_court_status(target_month):
+                set_scrape_status(
+                    "success",
+                    f"爬蟲執行逾時，已保留 {target_month or '目前月份'} 的既有場單資料。",
+                    target_month or "",
+                )
+            else:
+                set_scrape_status(
+                    "error",
+                    "爬蟲執行逾時，尚未取得新的場單資料，請稍後再試。",
+                    target_month or "",
+                )
         except Exception as e:
             print(f"Failed to run scraper: {e}")
             if get_saved_court_status(target_month):

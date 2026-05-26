@@ -6,8 +6,13 @@
     <title>台大電機女排管理系統</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=static_asset_version) }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script>
+        window.APP_BOOTSTRAP = {
+            serverToday: "{{ server_today }}"
+        };
+    </script>
 </head>
 <body>
     <div id="login-overlay" class="login-screen" style="display: none;">
@@ -932,6 +937,6 @@
         </div>
     </div>
     
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script src="{{ url_for('static', filename='script.js', v=static_asset_version) }}"></script>
 </body>
 </html>
