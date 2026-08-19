@@ -4456,6 +4456,53 @@ html, body, .app-container {
     color: #2c3e50;
 }
 
+.strategy-pool-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 140px;
+}
+
+.strategy-metric-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    line-height: 1.2;
+    width: fit-content;
+}
+
+.strategy-metric-chip strong {
+    font-weight: 700;
+}
+
+.strategy-metric-chip--base {
+    background: rgba(52, 152, 219, 0.14);
+    color: #1f5f8b;
+}
+
+.strategy-metric-chip--recommended {
+    background: rgba(46, 204, 113, 0.16);
+    color: #1d7a45;
+}
+
+.strategy-metric-chip--predictive {
+    background: rgba(241, 196, 15, 0.18);
+    color: #8a6b00;
+}
+
+.strategy-metric-chip--info {
+    background: rgba(231, 76, 60, 0.14);
+    color: #8c2d21;
+}
+
+.strategy-fallback-note {
+    font-size: 0.72rem;
+    color: #7f8c8d;
+}
+
 .lottery-edit-grid {
     display: grid;
     gap: 8px;

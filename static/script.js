@@ -6,6 +6,7 @@ const LAST_SECTION_KEY = 'vbt_last_section';
 const SIDEBAR_TOGGLED_KEY = 'vbt_sidebar_toggled';
 const SIDEBAR_PINNED_KEY = 'vbt_sidebar_pinned';
 const THEME_MODE_KEY = 'vbt_theme_mode';
+const sectionLoadState = {};
 
 document.addEventListener('DOMContentLoaded', () => {
     // 1. 取得目前的權限狀態
@@ -163,15 +164,6 @@ function toggleSidebar() {
     }
     mainApp.classList.toggle('sidebar-toggled');
     sessionStorage.setItem(SIDEBAR_TOGGLED_KEY, String(mainApp.classList.contains('sidebar-toggled')));
-    syncSidebarPinButton();
-    updateShowcaseCropGuide();
-}
-
-function openSidebar() {
-    const mainApp = document.getElementById('main-app');
-    if (!mainApp || !mainApp.classList.contains('sidebar-toggled')) return;
-    mainApp.classList.remove('sidebar-toggled');
-    sessionStorage.setItem(SIDEBAR_TOGGLED_KEY, 'false');
     syncSidebarPinButton();
     updateShowcaseCropGuide();
 }
@@ -357,14 +349,40 @@ function showSection(sectionId) {
     if (mainApp && !mainApp.classList.contains('sidebar-pinned')) {
         closeSidebar();
     }
+
+    ensureSectionDataLoaded(sectionId).catch((error) => {
+        console.error(`Failed to load section data for ${sectionId}`, error);
+    });
 }
 
-function toggleSidebarMobile() {
-    const sidebar = document.querySelector('.sidebar');
-    if(sidebar) sidebar.classList.toggle('active'); 
+function resetSectionLoadState() {
+    Object.keys(sectionLoadState).forEach((key) => {
+        delete sectionLoadState[key];
+    });
 }
 
+async function ensureSectionDataLoaded(sectionId, options = {}) {
+    const force = options.force === true;
+    if (!force && sectionLoadState[sectionId]) return;
 
+    if (sectionId === 'home') {
+        await loadGallery();
+    } else if (sectionId === 'schedule') {
+        await loadCourtStatus();
+    } else if (sectionId === 'strategy') {
+        renderIndependentAccountPlanSection();
+        await Promise.all([loadLotteryBids(), loadLotteryDashboard()]);
+    } else if (sectionId === 'videos') {
+        await loadVideoSections();
+        initVideoImprovementPanel();
+    } else if (sectionId === 'team-data') {
+        await loadTeamResources();
+    } else if (sectionId === 'approval' && localStorage.getItem('vbt_role') === 'captain') {
+        await Promise.all([loadPendingUsers(), loadTeamMembers()]);
+    }
+
+    sectionLoadState[sectionId] = true;
+}
 
 // ==========================================
 // 2. Authentication & Account Management
@@ -548,15 +566,11 @@ function applyLoginUI(username, role) {
         }
     });
 
-    // 3. 載入相關數據
-    if (role === 'captain') {
-        loadPendingUsers();
-        loadTeamMembers();
-    }
-    loadGallery();
-    loadCourtStatus();
-    loadTeamResources();
-    initVideoImprovementPanel();
+    resetSectionLoadState();
+    const activeSection = sessionStorage.getItem(LAST_SECTION_KEY) || 'home';
+    ensureSectionDataLoaded(activeSection, { force: true }).catch((error) => {
+        console.error(`Failed to load active section data for ${activeSection}`, error);
+    });
 }
 
 function handleLogout() {
@@ -2030,12 +2044,9 @@ async function saveVideoNotes() {
     else await loadVideoSections();
 }
 
-window.addEventListener('load', loadVideoSections);
-window.addEventListener('load', loadTeamResources);
 window.addEventListener('load', initFrameAnalysisDashboard);
 window.addEventListener('load', initVideoImprovementPanel);
 window.addEventListener('load', initCourtWeekdayFilters);
-window.addEventListener('load', loadCourtStatus);
 
 // ==========================================
 // 5. Application Feature Functions (Mocks & Tools)
@@ -2741,7 +2752,6 @@ function closeLightbox() {
 }
 
 // Ensure gallery loads automatically on page startup
-window.addEventListener('load', loadGallery);
 window.addEventListener('load', updateShowcaseCropGuide);
 window.addEventListener('resize', updateShowcaseCropGuide);
 window.addEventListener('resize', () => {
@@ -3095,31 +3105,6 @@ function sortMenuRows(rows) {
         if (difficultyDiff !== 0) return difficultyDiff;
         return String(a.name || '').localeCompare(String(b.name || ''));
     });
-}
-
-function renderMenuCard(row, index = null) {
-    const badges = [
-        `<span class="menu-badge">人數 ${escapeHtml(String(row.people_count || '-'))}</span>`,
-        ...row.court_modes.map((item) => `<span class="menu-badge">${escapeHtml(item)}</span>`),
-        ...row.complexities.map((item) => `<span class="menu-badge">${escapeHtml(item)}</span>`),
-        ...row.fatigue_levels.map((item) => `<span class="menu-badge">${escapeHtml(item)}</span>`),
-        ...row.difficulty_levels.map((item) => `<span class="menu-badge">${escapeHtml(item)}</span>`)
-    ].join('');
-
-    return `
-        <article class="menu-result-card">
-            <div class="menu-result-card__header">
-                <div>
-                    <div class="menu-result-card__eyebrow">${index === null ? '符合的訓練' : `訓練 ${index + 1}`}</div>
-                    <h4>${escapeHtml(row.name)}</h4>
-                </div>
-                <div class="menu-result-card__badges">${badges}</div>
-            </div>
-            <div class="menu-result-card__meta">
-                <div><strong>重點</strong><span>${escapeHtml(row.focuses.join(' / ') || '-')}</span></div>
-            </div>
-        </article>
-    `;
 }
 
 function createPracticeMenuSourceItem(row, sourceLabel, sourceType) {
@@ -4043,14 +4028,6 @@ async function initTrainingMenu() {
     }
 }
 
-function runTask(taskName) {
-    console.log(`Task triggered: ${taskName}`);
-    alert(`系統通知：正在執行 "${taskName}"。\n(目前僅具備介面。)`);
-}
-
-function addAdvancedRecord() {
-    alert('紀錄儲存成功。');
-}
 // ==========================================
 // 6. Court Status & Scraper Management (融合升級版)
 // ==========================================
@@ -4326,10 +4303,6 @@ function formatCourtDateLabel(dateObj) {
     return `${yyyy}-${mm}-${dd} (${COURT_WEEKDAY_NAMES[dateObj.getDay()]})`;
 }
 
-function buildCourtCalendarRows(monthId, data) {
-    return buildCourtCalendarRowsWithWeekdays(monthId, data, getSelectedCourtWeekdays());
-}
-
 function buildCourtCalendarRowsWithWeekdays(monthId, data, weekdays) {
     const selectedWeekdays = new Set(weekdays);
     const [year, month] = monthId.split('-').map(Number);
@@ -4514,31 +4487,6 @@ async function loadCourtStatus() {
     
     updateCourtEditButton();
     renderPracticeMenuBoard();
-}
-
-async function deleteMonthRecords(monthId) {
-    if (!monthId) return;
-    if (!confirm(`確定要刪除 ${monthId} 的全部已儲存資料嗎？這會一併移除場地狀態、投籤紀錄與歷史分析。`)) return;
-
-    try {
-        const response = await fetch(`/api/court_status/${monthId}`, { method: 'DELETE' });
-        const data = await response.json();
-        if (!response.ok) {
-            alert(data.error || '刪除儲存月份失敗。');
-            return;
-        }
-
-        await loadCourtStatus();
-        if (typeof loadLotteryDashboard === 'function') {
-            await loadLotteryDashboard();
-        }
-        if (typeof loadLotteryMonthHistory === 'function') {
-            await loadLotteryMonthHistory();
-        }
-    } catch (error) {
-        console.error('Failed to delete saved month', error);
-        alert('刪除儲存月份失敗。');
-    }
 }
 
 async function deleteCourtOnlyMonth(monthId) {
@@ -5002,6 +4950,12 @@ async function pollScrapeStatus(targetMonth, maxAttempts = 20) {
                 return;
             }
 
+            if (data.status === 'warning') {
+                alert(data.message || '爬蟲未成功更新最新資料，已先顯示舊資料。');
+                await loadCourtStatus();
+                return;
+            }
+
             if (data.status === 'success') {
                 await loadCourtStatus();
                 return;
@@ -5048,8 +5002,16 @@ const PROBABILITY_COURT_KEY = 'vbt_probability_courts';
 const STRATEGY_COURT_KEY = 'vbt_strategy_courts';
 const STRATEGY_INCLUDE_DATES_KEY = 'vbt_strategy_include_dates';
 const STRATEGY_EXCLUDE_DATES_KEY = 'vbt_strategy_exclude_dates';
+const PROBABILITY_START_MONTH_KEY = 'vbt_probability_start_month';
+const PROBABILITY_END_MONTH_KEY = 'vbt_probability_end_month';
+const STRATEGY_TICKET_BUDGET_KEY = 'vbt_strategy_ticket_budget';
+const STRATEGY_WEIGHT_RATIO_KEY = 'vbt_strategy_weight_ratio';
+const ACCOUNT_PLAN_STORAGE_PREFIX = 'vbt_account_plan_draft';
+const ACCOUNT_PLAN_WEEKDAY_KEY = 'vbt_account_plan_weekdays';
+const ACCOUNT_PLAN_MONTH_KEY = 'vbt_account_plan_month';
 const LOTTERY_COURTS = ['Court 4', 'Court 5', 'Court 6', 'Court 7'];
 const LOTTERY_WEEKDAY_NAMES = ['一', '二', '三', '四', '五', '六', '日'];
+const LOTTERY_ACCOUNT_NAMES = ['A', 'B', 'C', 'D', 'E'];
 const lotteryBidsCache = {};
 const lotteryEditState = {
     active: false,
@@ -5060,6 +5022,8 @@ let activeLotteryTab = 'current';
 let activeProbabilityTab = 'selected';
 let activeStrategyTab = 'selected';
 let lotterySelectedMonthId = getMonthData(0).id;
+let lotteryDashboardAbortController = null;
+let latestLotteryDashboardData = null;
 
 function initCheckboxFilter(selector, storageKey, defaultValues, valueGetter, onChange) {
     const checkboxes = document.querySelectorAll(selector);
@@ -5141,6 +5105,21 @@ function getSelectedProbabilityCourts() {
 
 function getSelectedStrategyCourts() {
     return getStoredCheckboxValues('[data-strategy-court]', STRATEGY_COURT_KEY, LOTTERY_COURTS, (checkbox) => checkbox.dataset.strategyCourt);
+}
+
+function getSelectedAccountPlanWeekdays() {
+    return getStoredCheckboxValues('[data-account-plan-weekday]', ACCOUNT_PLAN_WEEKDAY_KEY, getDefaultLotteryWeekdays(), (checkbox) => Number(checkbox.dataset.accountPlanWeekday));
+}
+
+function getSelectedAccountPlanMonth() {
+    const savedMonth = normalizeMonthString(localStorage.getItem(ACCOUNT_PLAN_MONTH_KEY) || '');
+    return savedMonth || getMonthData(1).id;
+}
+
+function setSelectedAccountPlanMonth(monthId) {
+    const normalized = normalizeMonthString(monthId);
+    if (!normalized) return;
+    localStorage.setItem(ACCOUNT_PLAN_MONTH_KEY, normalized);
 }
 
 function readStoredDateList(storageKey) {
@@ -5263,6 +5242,173 @@ function cloneLotteryRows(rows) {
     return JSON.parse(JSON.stringify(Array.isArray(rows) ? rows : []));
 }
 
+function getAccountPlanStorageKey(monthId) {
+    return `${ACCOUNT_PLAN_STORAGE_PREFIX}:${monthId}`;
+}
+
+function buildZeroLotteryRows(monthId) {
+    const [year, month] = monthId.split('-').map(Number);
+    const lastDay = new Date(year, month, 0).getDate();
+    const rows = [];
+    for (let day = 1; day <= lastDay; day++) {
+        const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        rows.push({
+            date: dateKey,
+            weekday: LOTTERY_WEEKDAY_NAMES[lotteryWeekdayIndex(dateKey)],
+            slot1: normalizeLotterySlot({}),
+            slot2: normalizeLotterySlot({}),
+        });
+    }
+    return rows;
+}
+
+function getStoredAccountPlanRows(monthId) {
+    const storageKey = getAccountPlanStorageKey(monthId);
+    try {
+        const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        if (!Array.isArray(saved) || saved.length === 0) return buildZeroLotteryRows(monthId);
+        const normalizedMap = new Map(saved.map((row) => {
+            const normalized = normalizeLotteryRow(row);
+            return [normalized.date, normalized];
+        }));
+        return buildZeroLotteryRows(monthId).map((row) => normalizedMap.get(row.date) || row);
+    } catch (error) {
+        console.warn(`Failed to read account plan rows for ${monthId}`, error);
+        return buildZeroLotteryRows(monthId);
+    }
+}
+
+function saveAccountPlanRows(monthId, rows) {
+    const storageKey = getAccountPlanStorageKey(monthId);
+    localStorage.setItem(storageKey, JSON.stringify(rows.map(normalizeLotteryRow)));
+}
+
+function updateAccountPlanCell(monthId, rowDate, slotKey, court, value) {
+    const rows = getStoredAccountPlanRows(monthId);
+    const normalizedDate = normalizeCourtDateValue(rowDate);
+    const row = rows.find((item) => item.date === normalizedDate);
+    if (!row) return;
+    row[slotKey] = normalizeLotterySlot(row[slotKey] || {});
+    row[slotKey][court] = Math.max(0, Math.min(5, Number.parseInt(value, 10) || 0));
+    saveAccountPlanRows(monthId, rows);
+    renderIndependentAccountPlanSection();
+}
+
+function clearAccountPlanRows(monthId) {
+    saveAccountPlanRows(monthId, buildZeroLotteryRows(monthId));
+    renderIndependentAccountPlanSection();
+}
+
+function buildRowsFromStrategyPlan(strategyPlan, monthId) {
+    const rows = buildZeroLotteryRows(monthId);
+    const rowMap = new Map(rows.map((row) => [row.date, row]));
+    (strategyPlan?.candidate_pools || []).forEach((pool) => {
+        const row = rowMap.get(pool.date);
+        if (!row) return;
+        const slotKey = pool.time === '18:00-20:00' ? 'slot1' : 'slot2';
+        row[slotKey][pool.court] = Math.max(0, Math.min(5, Number.parseInt(pool.recommended_tickets || 0, 10) || 0));
+    });
+    return rows;
+}
+
+function importStrategyToAccountPlan() {
+    const monthId = latestLotteryDashboardData?.strategy?.target_month || getMonthData(1).id;
+    const strategyPlan = activeStrategyTab === 'all'
+        ? latestLotteryDashboardData?.strategy?.all_time
+        : latestLotteryDashboardData?.strategy?.selected;
+    if (!strategyPlan || !Array.isArray(strategyPlan.candidate_pools)) {
+        alert('目前還沒有可帶入的策略分析結果。');
+        return;
+    }
+    setSelectedAccountPlanMonth(monthId);
+    saveAccountPlanRows(monthId, buildRowsFromStrategyPlan(strategyPlan, monthId));
+    renderIndependentAccountPlanSection();
+}
+
+function buildAccountAssignmentsFromRows(rows) {
+    const accountState = LOTTERY_ACCOUNT_NAMES.map((account) => ({
+        account,
+        ticketsUsed: 0,
+        assignments: [],
+        slotCounts: {},
+    }));
+    const requests = [];
+    (rows || []).forEach((row) => {
+        const normalized = normalizeLotteryRow(row);
+        [
+            ['slot1', '18:00-20:00'],
+            ['slot2', '20:00-22:00'],
+        ].forEach(([slotKey, timeLabel]) => {
+            LOTTERY_COURTS.forEach((court) => {
+                const tickets = normalized[slotKey]?.[court] || 0;
+                if (tickets > 0) {
+                    requests.push({
+                        date: normalized.date,
+                        weekday: normalized.weekday,
+                        time: timeLabel,
+                        court,
+                        tickets,
+                    });
+                }
+            });
+        });
+    });
+
+    requests.sort((a, b) => b.tickets - a.tickets || a.date.localeCompare(b.date) || a.time.localeCompare(b.time) || LOTTERY_COURTS.indexOf(a.court) - LOTTERY_COURTS.indexOf(b.court));
+    const unassigned = [];
+
+    requests.forEach((request) => {
+        const slotKey = `${request.date}|${request.time}`;
+        const eligible = accountState
+            .filter((account) => account.ticketsUsed < 10)
+            .sort((a, b) => a.ticketsUsed - b.ticketsUsed || (a.slotCounts[slotKey] || 0) - (b.slotCounts[slotKey] || 0) || a.account.localeCompare(b.account));
+        const assigned = eligible.slice(0, request.tickets);
+        assigned.forEach((account) => {
+            account.ticketsUsed += 1;
+            account.slotCounts[slotKey] = (account.slotCounts[slotKey] || 0) + 1;
+            account.assignments.push({
+                date: request.date,
+                weekday: request.weekday,
+                time: request.time,
+                court: request.court,
+            });
+        });
+        if (assigned.length < request.tickets) {
+            unassigned.push({
+                ...request,
+                unassignedCount: request.tickets - assigned.length,
+            });
+        }
+    });
+
+    accountState.forEach((account) => {
+        account.assignments.sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time) || LOTTERY_COURTS.indexOf(a.court) - LOTTERY_COURTS.indexOf(b.court));
+    });
+
+    return { accounts: accountState, unassigned };
+}
+
+function toggleAccountPlanWeekday(value) {
+    const weekdayValue = Number.parseInt(value, 10);
+    if (!Number.isFinite(weekdayValue)) return;
+    const current = new Set(getSelectedAccountPlanWeekdays());
+    if (current.has(weekdayValue)) {
+        if (current.size === 1) return;
+        current.delete(weekdayValue);
+    } else {
+        current.add(weekdayValue);
+    }
+    localStorage.setItem(ACCOUNT_PLAN_WEEKDAY_KEY, JSON.stringify(Array.from(current).sort((a, b) => a - b)));
+    renderIndependentAccountPlanSection();
+}
+
+function updateAccountPlanMonth(value) {
+    const normalized = normalizeMonthString(value);
+    if (!normalized) return;
+    setSelectedAccountPlanMonth(normalized);
+    renderIndependentAccountPlanSection();
+}
+
 function formatLotteryDateLabel(dateValue) {
     return `${dateValue} (${LOTTERY_WEEKDAY_NAMES[lotteryWeekdayIndex(dateValue)]})`;
 }
@@ -5291,6 +5437,10 @@ function buildLotteryCalendarRowsWithWeekdays(monthId, data, weekdays) {
         });
     }
     return rows;
+}
+
+function buildAccountPlanRowsWithWeekdays(monthId, rows, weekdays) {
+    return buildLotteryCalendarRowsWithWeekdays(monthId, rows, weekdays);
 }
 
 function setLotteryCache(monthId, rows) {
@@ -5583,9 +5733,18 @@ function initProbabilityControls() {
     const startInput = document.getElementById('probability-start-month');
     const endInput = document.getElementById('probability-end-month');
     const picker = document.getElementById('lottery-month-picker');
-    if (startInput) startInput.value = currentMonthId;
-    if (endInput) endInput.value = currentMonthId;
+    const savedStartMonth = localStorage.getItem(PROBABILITY_START_MONTH_KEY) || '';
+    const savedEndMonth = localStorage.getItem(PROBABILITY_END_MONTH_KEY) || '';
+    const savedTicketBudget = localStorage.getItem(STRATEGY_TICKET_BUDGET_KEY) || '';
+    const savedWeightRatio = localStorage.getItem(STRATEGY_WEIGHT_RATIO_KEY) || '';
+    const ticketBudgetInput = document.getElementById('strategy-ticket-budget');
+    const weightRatioInput = document.getElementById('strategy-weight-ratio');
+
+    if (startInput) startInput.value = savedStartMonth || currentMonthId;
+    if (endInput) endInput.value = savedEndMonth || currentMonthId;
     if (picker) picker.value = currentMonthId;
+    if (ticketBudgetInput) ticketBudgetInput.value = savedTicketBudget || '50';
+    if (weightRatioInput) weightRatioInput.value = savedWeightRatio || '1.3';
 }
 
 function switchProbabilityTab(tabType) {
@@ -5682,124 +5841,245 @@ function getProbabilityCellPalette(winRate, attempts) {
     };
 }
 
-function renderProbabilityMatrix(stats, emptyMessage, selectedWeekdays, selectedCourts) {
+function renderProbabilityMatrix(stats, emptyMessage, selectedWeekdays, selectedCourts, model) {
     const weekdayNames = selectedWeekdays.map((index) => LOTTERY_WEEKDAY_NAMES[index]);
     const filteredStats = (Array.isArray(stats) ? stats : []).filter((item) => weekdayNames.includes(item.weekday) && selectedCourts.includes(item.court));
     if (filteredStats.length === 0) return `<p style="text-align:center; color:#999; padding: 20px;">${emptyMessage}</p>`;
 
-    const times = ['18:00-20:00', '20:00-22:00'];
-    const statMap = new Map(filteredStats.map((item) => [`${item.weekday}|${item.time}|${item.court}`, item]));
-    let html = '<div class="court-dashboard-container"><div class="probability-matrix"><table class="court-table probability-table"><thead><tr><th>星期 / 時段</th>';
-    selectedCourts.forEach((court) => { html += `<th>${court.replace('Court ', '場 ')}</th>`; });
+    const modelLine = model
+        ? `<div class="strategy-note">Model: <strong>${escapeHtml(model.selected_prior || '-')}</strong> · Inference: <strong>${escapeHtml(model.inference || '-')}</strong></div>`
+        : '';
+
+    let html = `${modelLine}<div class="court-dashboard-container"><div class="probability-matrix"><table class="court-table probability-table"><thead><tr><th>Pool</th><th>Base Tickets</th><th>History</th><th>Predictive Win %</th></tr></thead><tbody>`;
+    filteredStats.forEach((item) => {
+        const meanBase = item.posterior_mean_base_tickets ?? item.estimated_pool_tickets ?? 0;
+        const stddev = item.posterior_stddev ?? 0;
+        const interval = item.credible_interval || {};
+        const predictiveMap = item.predictive_win_probability_by_tickets || {};
+        const predictiveText = [1, 2, 3, 4, 5].map((tickets) => `${tickets}: ${predictiveMap[String(tickets)] ?? '-'}%`).join('<br>');
+        const palette = getProbabilityCellPalette(item.win_rate || 0, item.attempts || 0);
+        html += `
+            <tr>
+                <td><strong>${escapeHtml(item.weekday)} ${escapeHtml(item.time)}</strong><br>${escapeHtml((item.court || '').replace('Court ', '場 '))}</td>
+                <td>
+                    <div class="probability-cell" style="background:${palette.background}; color:${palette.text}; border-color:${palette.border};">
+                        <strong style="color:${palette.text};">${meanBase} ± ${stddev}</strong>
+                        <small style="color:${palette.subtext};">MAP ${item.posterior_map_base_tickets ?? '-'} · CI ${interval.low ?? '-'}-${interval.high ?? '-'}</small>
+                    </div>
+                </td>
+                <td>中籤 ${item.total_wins} / 出手 ${item.attempts} 次 / 投籤 ${item.total_bids} 支</td>
+                <td>${predictiveText}</td>
+            </tr>
+        `;
+    });
+    html += '</tbody></table></div></div>';
+    return html;
+}
+
+function renderAllocationCompact(allocationByPool) {
+    if (!Array.isArray(allocationByPool) || allocationByPool.length === 0) return '0 tickets assigned';
+    return allocationByPool.map((item) => `${item.court.replace('Court ', '場 ')} ${item.date} ${item.time} × ${item.tickets}`).join('<br>');
+}
+
+function renderStrategyMetricChip(label, value, modifier) {
+    return `<span class="strategy-metric-chip strategy-metric-chip--${modifier}"><strong>${label}</strong> ${escapeHtml(String(value))}</span>`;
+}
+
+function renderStrategyPoolMatrix(candidatePools) {
+    if (!Array.isArray(candidatePools) || candidatePools.length === 0) {
+        return '<p style="text-align:center; color:#999; padding: 20px;">沒有符合條件的 pool。</p>';
+    }
+
+    const grouped = new Map();
+    candidatePools.forEach((pool) => {
+        const rowKey = `${pool.date}|${pool.time}`;
+        if (!grouped.has(rowKey)) {
+            grouped.set(rowKey, {
+                date: pool.date,
+                weekday: pool.weekday,
+                time: pool.time,
+                courts: new Map(),
+            });
+        }
+        grouped.get(rowKey).courts.set(pool.court, pool);
+    });
+
+    let html = '<div class="court-dashboard-container"><div class="probability-matrix"><table class="court-table probability-table"><thead><tr><th>日期 / 時段</th>';
+    LOTTERY_COURTS.forEach((court) => {
+        html += `<th>${court.replace('Court ', '場 ')}</th>`;
+    });
     html += '</tr></thead><tbody>';
 
-    weekdayNames.forEach((weekday) => {
-        times.forEach((time) => {
-            html += `<tr><td><strong>${weekday}</strong><br>${time}</td>`;
-            selectedCourts.forEach((court) => {
-                const item = statMap.get(`${weekday}|${time}|${court}`);
-                const winRate = item ? item.win_rate : 0;
-                const attempts = item ? item.attempts : 0;
-                const totalWins = item ? item.total_wins : 0;
-                const ticketProbability = item ? item.ticket_probability : 0;
-                const palette = getProbabilityCellPalette(winRate, attempts);
+    Array.from(grouped.values())
+        .sort((a, b) => `${a.date}|${a.time}`.localeCompare(`${b.date}|${b.time}`))
+        .forEach((row) => {
+            let slotLoseProbability = 1;
+            row.courts.forEach((pool) => {
+                const recommendedTickets = pool.recommended_tickets || 0;
+                const slotWinProbability = recommendedTickets > 0 ? ((pool.recommended_win_probability || 0) / 100) : 0;
+                slotLoseProbability *= (1 - slotWinProbability);
+            });
+            const slotSuccessRate = Math.round((1 - slotLoseProbability) * 1000) / 10;
+            html += `<tr><td><strong>${escapeHtml(row.date)} (${escapeHtml(row.weekday)})</strong><br>${escapeHtml(row.time)}<br><small>時段中籤率 ${slotSuccessRate}%</small></td>`;
+            LOTTERY_COURTS.forEach((court) => {
+                const pool = row.courts.get(court);
+                if (!pool) {
+                    html += '<td class="court-empty">-</td>';
+                    return;
+                }
+                const recommendedTickets = pool.recommended_tickets || 0;
+                const predictive = recommendedTickets > 0 ? `${pool.recommended_win_probability}%` : '0%';
+                const infoGainMap = pool.expected_information_gain_by_tickets || {};
+                const infoGain = recommendedTickets > 0 ? (infoGainMap[String(recommendedTickets)] ?? '-') : '-';
+                const fallbackNote = pool.fallback_source && pool.fallback_source !== 'exact'
+                    ? '<div class="strategy-fallback-note">fallback</div>'
+                    : '';
                 html += `
                     <td>
-                        <div class="probability-cell" style="background:${palette.background}; color:${palette.text}; border-color:${palette.border};">
-                            <strong style="color:${palette.text};">${winRate}%</strong>
-                            <small style="color:${palette.subtext};">中籤 ${totalWins} / 嘗試 ${attempts} ・ 單籤機率 ${ticketProbability}%</small>
+                        <div class="strategy-pool-cell">
+                            ${renderStrategyMetricChip('Base', `${pool.posterior_mean_base_tickets} ± ${pool.posterior_stddev}`, 'base')}
+                            ${renderStrategyMetricChip('Rec', recommendedTickets, 'recommended')}
+                            ${renderStrategyMetricChip('Predict', predictive, 'predictive')}
+                            ${renderStrategyMetricChip('Info', infoGain, 'info')}
+                            ${fallbackNote}
                         </div>
                     </td>
                 `;
             });
             html += '</tr>';
         });
-    });
 
     html += '</tbody></table></div></div>';
     return html;
 }
 
-function groupStrategyRows(rows) {
-    const grouped = new Map();
-    (rows || []).forEach((row) => {
-        if (!grouped.has(row.date)) {
-            grouped.set(row.date, { date: row.date, weekday: row.weekday, dateSuccessRate: 0, slot1: null, slot2: null });
-        }
-        const target = grouped.get(row.date);
-        if (row.time === '18:00-20:00') target.slot1 = row;
-        else target.slot2 = row;
+function renderStrategyPoolTable(candidatePools) {
+    if (!Array.isArray(candidatePools) || candidatePools.length === 0) {
+        return '<p style="text-align:center; color:#999; padding: 20px;">沒有符合條件的 pool。</p>';
+    }
+
+    let html = '<div class="court-dashboard-container"><div class="probability-matrix"><table class="court-table probability-table"><thead><tr><th>Pool</th><th>Estimated Base</th><th>Recommended</th><th>Predictive</th><th>Info Gain</th></tr></thead><tbody>';
+    candidatePools.forEach((pool) => {
+        const predictiveMap = pool.predictive_win_probability_by_tickets || {};
+        const infoGainMap = pool.expected_information_gain_by_tickets || {};
+        const recommendedTickets = pool.recommended_tickets || 0;
+        const predictive = recommendedTickets > 0 ? `${pool.recommended_win_probability}%` : '-';
+        const infoGain = recommendedTickets > 0 ? (infoGainMap[String(recommendedTickets)] ?? '-') : '-';
+        html += `
+            <tr>
+                <td><strong>${escapeHtml(pool.date)} (${escapeHtml(pool.weekday)})</strong><br>${escapeHtml(pool.time)} · ${escapeHtml(pool.court.replace('Court ', '場 '))}${pool.fallback_source && pool.fallback_source !== 'exact' ? '<br><small>fallback</small>' : ''}</td>
+                <td>${pool.posterior_mean_base_tickets} ± ${pool.posterior_stddev}</td>
+                <td><strong>${recommendedTickets}</strong></td>
+                <td>${predictive}</td>
+                <td>${infoGain}</td>
+            </tr>
+        `;
     });
-    return Array.from(grouped.values())
-        .map((dayRow) => {
-            const slot1Rate = dayRow.slot1 ? ((dayRow.slot1.success_rate || 0) / 100) : 0;
-            const slot2Rate = dayRow.slot2 ? ((dayRow.slot2.success_rate || 0) / 100) : 0;
-            dayRow.dateSuccessRate = Math.round((1 - ((1 - slot1Rate) * (1 - slot2Rate))) * 1000) / 10;
-            return dayRow;
-        })
-        .sort((a, b) => a.date.localeCompare(b.date));
+    html += '</tbody></table></div></div>';
+    return html;
 }
 
-function renderStrategyCell(dayRow, court) {
-    const slot1Bid = dayRow.slot1 ? (dayRow.slot1.allocations[court] || 0) : 0;
-    const slot2Bid = dayRow.slot2 ? (dayRow.slot2.allocations[court] || 0) : 0;
-    const slot1Class = slot1Bid > 0 ? ` strategy-bid--level-${Math.min(slot1Bid, 5)}` : '';
-    const slot2Class = slot2Bid > 0 ? ` strategy-bid--level-${Math.min(slot2Bid, 5)}` : '';
-    return `
-        <td class="strategy-split-cell">
-            <div class="strategy-split-stack">
-                <div class="strategy-split-half">
-                    <span class="strategy-bid${slot1Class}">${slot1Bid}</span>
-                </div>
-                <div class="strategy-split-half">
-                    <span class="strategy-bid${slot2Class}">${slot2Bid}</span>
-                </div>
-            </div>
-        </td>
-    `;
-}
+function renderStrategyTable(plan, summaryLabel) {
+    if (!plan || !Array.isArray(plan.candidate_pools) || plan.candidate_pools.length === 0) {
+        return '<p style="text-align:center; color:#999; padding: 20px;">資料不足，無法產生策略建議。</p>';
+    }
 
-function renderStrategySuccessCell(dayRow) {
-    const slot1Rate = dayRow.slot1 ? (dayRow.slot1.success_rate || 0) : 0;
-    const slot2Rate = dayRow.slot2 ? (dayRow.slot2.success_rate || 0) : 0;
-    return `
-        <td class="strategy-split-cell">
-            <div class="strategy-split-stack">
-                <div class="strategy-split-half">
-                    <span class="strategy-split-rate">${slot1Rate}%</span>
-                </div>
-                <div class="strategy-split-half">
-                    <span class="strategy-split-rate">${slot2Rate}%</span>
-                </div>
-            </div>
-        </td>
-    `;
-}
-
-function renderStrategyTable(rows, summaryLabel, selectedCourts) {
-    if (!Array.isArray(rows) || rows.length === 0) return '<p style="text-align:center; color:#999; padding: 20px;">資料不足，無法產生策略建議。</p>';
-    const days = groupStrategyRows(rows);
     let html = `<div class="strategy-note">${escapeHtml(summaryLabel)}</div>`;
-    html += '<div class="court-dashboard-container"><div class="probability-matrix"><table class="court-table probability-table"><thead><tr><th>日期</th>';
-    selectedCourts.forEach((court) => { html += `<th>${court.replace('Court ', '場 ')}<br><small>18-20 / 20-22</small></th>`; });
-    html += '<th>時段成功率<br><small>18-20 / 20-22</small></th><th>單日成功率</th></tr></thead><tbody>';
+    html += renderStrategyPoolMatrix(plan.candidate_pools);
+    return html;
+}
 
-    days.forEach((dayRow) => {
-        html += `<tr><td><strong>${dayRow.date} (${dayRow.weekday})</strong></td>`;
-        selectedCourts.forEach((court) => { html += renderStrategyCell(dayRow, court); });
-        html += renderStrategySuccessCell(dayRow);
-        html += `<td><strong>${dayRow.dateSuccessRate}%</strong></td></tr>`;
+function renderAccountPlanEditorTable(monthId, rows) {
+    let html = '<div class="court-dashboard-container"><div class="probability-matrix"><table class="court-table lottery-table"><thead><tr><th>日期</th><th>18:00 - 20:00</th><th>20:00 - 22:00</th></tr></thead><tbody>';
+    rows.forEach((row) => {
+        const slot1 = normalizeLotterySlot(row.slot1 || {});
+        const slot2 = normalizeLotterySlot(row.slot2 || {});
+        const renderCell = (slotKey, slot) => `
+            <td class="court-edit-cell">
+                <div class="lottery-edit-grid">
+                    ${LOTTERY_COURTS.map((court) => `
+                        <div class="lottery-edit-row">
+                            <label>${court.replace('Court ', '場 ')}</label>
+                            <select onchange="updateAccountPlanCell('${monthId}', '${row.date}', '${slotKey}', '${court}', this.value)">
+                                ${[0, 1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${slot[court] === value ? 'selected' : ''}>${value}</option>`).join('')}
+                            </select>
+                        </div>
+                    `).join('')}
+                </div>
+            </td>
+        `;
+        html += `<tr><td><strong>${escapeHtml(row.date)}</strong></td>${renderCell('slot1', slot1)}${renderCell('slot2', slot2)}</tr>`;
     });
-
     html += '</tbody></table></div></div>';
     return html;
 }
 
-function buildStrategySummary(baseLabel, includedDates, excludedDates) {
-    const parts = [baseLabel];
-    if (includedDates.length > 0) parts.push(`加入 ${includedDates.join(', ')}`);
-    if (excludedDates.length > 0) parts.push(`排除 ${excludedDates.join(', ')}`);
-    return parts.join(' ｜ ');
+function renderIndependentAccountPlanSection() {
+    const container = document.getElementById('strategy-account-plan');
+    if (!container) return;
+    const monthId = getSelectedAccountPlanMonth();
+    const selectedWeekdays = getSelectedAccountPlanWeekdays();
+    const rows = getStoredAccountPlanRows(monthId);
+    const visibleRows = buildAccountPlanRowsWithWeekdays(monthId, rows, selectedWeekdays);
+    const assignmentPlan = buildAccountAssignmentsFromRows(rows);
+    const totalTickets = rows.reduce((sum, row) => {
+        const normalized = normalizeLotteryRow(row);
+        return sum
+            + LOTTERY_COURTS.reduce((acc, court) => acc + (normalized.slot1?.[court] || 0), 0)
+            + LOTTERY_COURTS.reduce((acc, court) => acc + (normalized.slot2?.[court] || 0), 0);
+    }, 0);
+    const weekdayOptions = LOTTERY_WEEKDAY_NAMES.map((name, index) => `
+        <label class="court-weekday-option${selectedWeekdays.includes(index) ? ' is-checked' : ''}">
+            <input type="checkbox" data-account-plan-weekday="${index}" ${selectedWeekdays.includes(index) ? 'checked' : ''} onchange="toggleAccountPlanWeekday('${index}')"> ${name}
+        </label>
+    `).join('');
+
+    let html = `
+        <div class="strategy-panel-header">
+            <div>
+                <h4 class="strategy-panel-title">帳號投籤分配</h4>
+            </div>
+            <div class="strategy-weight-controls">
+                <button class="court-btn" type="button" onclick="importStrategyToAccountPlan()">一鍵帶入策略分析結果</button>
+                <button class="court-btn" type="button" onclick="clearAccountPlanRows('${monthId}')">全部清空</button>
+            </div>
+        </div>
+        <div class="strategy-filter-row">
+            <div class="court-weekday-filter" id="account-plan-weekday-filter">
+                <span class="court-weekday-filter__label">星期</span>
+                ${weekdayOptions}
+            </div>
+            <div class="strategy-month-controls">
+                <label>
+                    <span>指定月份</span>
+                    <input type="month" id="account-plan-month-picker" value="${escapeHtml(monthId)}" onchange="updateAccountPlanMonth(this.value)" placeholder="YYYY-MM" inputmode="numeric">
+                </label>
+            </div>
+        </div>
+        <div class="strategy-note">獨立投籤草稿 ｜ 目標月份：${escapeHtml(monthId)} ｜ 目前總籤數：<strong>${totalTickets}</strong></div>
+        ${renderAccountPlanEditorTable(monthId, visibleRows)}
+    `;
+
+    html += '<div class="court-dashboard-container"><div class="strategy-note">帳號分配結果</div><div class="probability-matrix"><table class="court-table probability-table"><thead><tr><th>帳號</th><th>已用</th><th>投籤位置</th></tr></thead><tbody>';
+    assignmentPlan.accounts.forEach((account) => {
+        const assignments = account.assignments.length > 0
+            ? account.assignments.map((item) => `${item.date} (${item.weekday}) ${item.time} ${item.court.replace('Court ', '場 ')}`).join('<br>')
+            : '<span class="missing-data-text">未分配</span>';
+        html += `<tr><td><strong>${escapeHtml(account.account)}</strong></td><td>${account.ticketsUsed} / 10</td><td>${assignments}</td></tr>`;
+    });
+    html += '</tbody></table></div></div>';
+
+    if (assignmentPlan.unassigned.length > 0) {
+        html += '<div class="court-dashboard-container"><div class="strategy-note">未分配籤數</div><div class="probability-matrix"><table class="court-table probability-table"><thead><tr><th>位置</th><th>未分配</th></tr></thead><tbody>';
+        assignmentPlan.unassigned.forEach((item) => {
+            html += `<tr><td>${escapeHtml(`${item.date} (${item.weekday}) ${item.time} ${item.court.replace('Court ', '場 ')}`)}</td><td><strong>${item.unassignedCount}</strong></td></tr>`;
+        });
+        html += '</tbody></table></div></div>';
+    }
+
+    container.innerHTML = html;
+    applyTextInputFallback('account-plan-month-picker', 'month');
+    syncCustomCheckboxState(container);
 }
 
 function refreshLotteryDashboard(trigger) {
@@ -5820,6 +6100,12 @@ function getStrategyWeights() {
     };
 }
 
+function getStrategyTicketBudget() {
+    const input = document.getElementById('strategy-ticket-budget');
+    const budget = Number.parseInt(input ? input.value : '50', 10);
+    return Number.isFinite(budget) && budget >= 0 ? budget : 50;
+}
+
 async function loadLotteryDashboard() {
     const startInput = document.getElementById('probability-start-month');
     const endInput = document.getElementById('probability-end-month');
@@ -5833,6 +6119,9 @@ async function loadLotteryDashboard() {
         endInput.value = endMonth;
     }
 
+    localStorage.setItem(PROBABILITY_START_MONTH_KEY, startMonth);
+    localStorage.setItem(PROBABILITY_END_MONTH_KEY, endMonth);
+
     const targetMonth = getMonthData(1).id;
     const probabilityWeekdays = getSelectedProbabilityWeekdays();
     const strategyWeekdays = getSelectedStrategyWeekdays();
@@ -5841,44 +6130,79 @@ async function loadLotteryDashboard() {
     const strategyIncludedDates = getStrategyIncludedDates();
     const strategyExcludedDates = getStrategyExcludedDates();
     const strategyWeights = getStrategyWeights();
+    const strategyTicketBudget = getStrategyTicketBudget();
+    localStorage.setItem(STRATEGY_TICKET_BUDGET_KEY, String(strategyTicketBudget));
+    localStorage.setItem(STRATEGY_WEIGHT_RATIO_KEY, String(strategyWeights.late));
 
     const params = new URLSearchParams({
         start_month: startMonth,
         end_month: endMonth,
         target_month: targetMonth,
         strategy_weight_ratio: String(strategyWeights.late),
+        strategy_ticket_budget: String(strategyTicketBudget),
     });
     strategyWeekdays.forEach((weekday) => params.append('strategy_weekday', String(weekday)));
+    strategyCourts.forEach((court) => params.append('strategy_court', court));
     strategyIncludedDates.forEach((dateValue) => params.append('strategy_include_date', dateValue));
     strategyExcludedDates.forEach((dateValue) => params.append('strategy_exclude_date', dateValue));
 
+    const selectedPanel = document.getElementById('probability-selected-panel');
+    const allPanel = document.getElementById('probability-all-panel');
+    const strategySelectedPanel = document.getElementById('strategy-selected-panel');
+    const strategyAllPanel = document.getElementById('strategy-all-panel');
+    if (selectedPanel) selectedPanel.innerHTML = '<p style="text-align:center; color:#999; padding: 20px;">機率分析載入中...</p>';
+    if (allPanel) allPanel.innerHTML = '<p style="text-align:center; color:#999; padding: 20px;">機率分析載入中...</p>';
+    if (strategySelectedPanel) strategySelectedPanel.innerHTML = '<p style="text-align:center; color:#999; padding: 20px;">策略分析載入中...</p>';
+    if (strategyAllPanel) strategyAllPanel.innerHTML = '<p style="text-align:center; color:#999; padding: 20px;">策略分析載入中...</p>';
+
     try {
-        const response = await fetch(`/api/lottery_dashboard?${params.toString()}`);
+        if (lotteryDashboardAbortController) {
+            lotteryDashboardAbortController.abort();
+        }
+        lotteryDashboardAbortController = new AbortController();
+        const response = await fetch(`/api/lottery_dashboard?${params.toString()}`, {
+            signal: lotteryDashboardAbortController.signal,
+        });
         const data = await response.json();
-
-        const selectedPanel = document.getElementById('probability-selected-panel');
-        const allPanel = document.getElementById('probability-all-panel');
+        if (!response.ok) {
+            throw new Error(data?.error || `HTTP ${response.status}`);
+        }
+        latestLotteryDashboardData = data;
         const summary = document.getElementById('probability-summary');
-        const strategySelectedPanel = document.getElementById('strategy-selected-panel');
-        const strategyAllPanel = document.getElementById('strategy-all-panel');
 
-        if (selectedPanel) selectedPanel.innerHTML = renderProbabilityMatrix(data.selected.stats, '所選月份區間內沒有可用的對應資料。', probabilityWeekdays, probabilityCourts);
-        if (allPanel) allPanel.innerHTML = renderProbabilityMatrix(data.all_time.stats, '目前還沒有足夠的歷史資料。', probabilityWeekdays, probabilityCourts);
+        if (selectedPanel) selectedPanel.innerHTML = renderProbabilityMatrix(data.selected.pool_summaries, '所選月份區間內沒有可用的對應資料。', probabilityWeekdays, probabilityCourts, data.selected.model);
+        if (allPanel) allPanel.innerHTML = renderProbabilityMatrix(data.all_time.pool_summaries, '目前還沒有足夠的歷史資料。', probabilityWeekdays, probabilityCourts, data.all_time.model);
         if (summary) {
             const usedRange = (data.selected.months_used || []).join(', ') || '無';
             const usedHistory = (data.all_time.months_used || []).join(', ') || '無';
-            summary.innerHTML = `所選區間：<strong>${escapeHtml(usedRange)}</strong><br>全部歷史：<strong>${escapeHtml(usedHistory)}</strong>`;
+            const selectedModel = data?.selected?.model?.selected_prior || '-';
+            const allModel = data?.all_time?.model?.selected_prior || '-';
+            const selectedFallbackNote = data?.selected?.used_all_history_fallback
+                ? ' ｜ <strong>所選區間無歷史，已改用全部歷史平均</strong>'
+                : '';
+            summary.innerHTML = `所選區間：<strong>${escapeHtml(usedRange)}</strong> ｜ Prior: <strong>${escapeHtml(selectedModel)}</strong>${selectedFallbackNote}<br>全部歷史：<strong>${escapeHtml(usedHistory)}</strong> ｜ Prior: <strong>${escapeHtml(allModel)}</strong>`;
         }
         const strategyTargetMonth = data?.strategy?.target_month || targetMonth;
         const selectedStrategySummary = `目標月份：${strategyTargetMonth} ｜ 所選區間：${(data.selected.months_used || []).join(', ') || '無'}`;
         const allHistoryStrategySummary = `目標月份：${strategyTargetMonth} ｜ 全部歷史：${(data.all_time.months_used || []).join(', ') || '無'}`;
-        if (strategySelectedPanel) strategySelectedPanel.innerHTML = renderStrategyTable(data.strategy.selected.rows, selectedStrategySummary, strategyCourts);
-        if (strategyAllPanel) strategyAllPanel.innerHTML = renderStrategyTable(data.strategy.all_time.rows, allHistoryStrategySummary, strategyCourts);
+        if (strategySelectedPanel) strategySelectedPanel.innerHTML = renderStrategyTable(data.strategy.selected, selectedStrategySummary);
+        if (strategyAllPanel) strategyAllPanel.innerHTML = renderStrategyTable(data.strategy.all_time, allHistoryStrategySummary);
+        renderIndependentAccountPlanSection();
 
         switchProbabilityTab(sessionStorage.getItem('vbt_probability_tab') || activeProbabilityTab);
         switchStrategyTab(sessionStorage.getItem('vbt_strategy_tab') || activeStrategyTab);
     } catch (error) {
+        if (error.name === 'AbortError') return;
         console.error('載入投籤儀表板失敗', error);
+        const summary = document.getElementById('probability-summary');
+        if (summary) summary.innerHTML = `<span style="color:#c0392b;">載入失敗：${escapeHtml(error.message || '未知錯誤')}</span>`;
+        if (selectedPanel) selectedPanel.innerHTML = '<p style="text-align:center; color:#c0392b; padding: 20px;">機率分析載入失敗</p>';
+        if (allPanel) allPanel.innerHTML = '<p style="text-align:center; color:#c0392b; padding: 20px;">機率分析載入失敗</p>';
+        if (strategySelectedPanel) strategySelectedPanel.innerHTML = '<p style="text-align:center; color:#c0392b; padding: 20px;">策略分析載入失敗</p>';
+        if (strategyAllPanel) strategyAllPanel.innerHTML = '<p style="text-align:center; color:#c0392b; padding: 20px;">策略分析載入失敗</p>';
+        renderIndependentAccountPlanSection();
+    } finally {
+        lotteryDashboardAbortController = null;
     }
 }
 
@@ -5906,10 +6230,8 @@ async function downloadStrategyTableAsPng() {
 
 window.addEventListener('load', initLotteryWeekdayFilters);
 window.addEventListener('load', initProbabilityControls);
-window.addEventListener('load', loadLotteryBids);
-window.addEventListener('load', loadLotteryDashboard);
 window.addEventListener('load', () => {
-    ['strategy-weight-ratio'].forEach((id) => {
+    ['strategy-weight-ratio', 'strategy-ticket-budget'].forEach((id) => {
         const input = document.getElementById(id);
         if (!input) return;
         input.addEventListener('change', loadLotteryDashboard);

@@ -1,4 +1,5 @@
 import calendar
+import hashlib
 import json
 import math
 import os
@@ -30,9 +31,48 @@ STATIC_ASSET_FILES = ("static/style.css", "static/script.js", "templates/index.h
 SCRAPER_SUBPROCESS_TIMEOUT_SECONDS = 90
 SUPABASE_RETRY_ATTEMPTS = 3
 SUPABASE_RETRY_DELAY_SECONDS = 0.6
+LOTTERY_ANALYSIS_VERSION_KEY = "lottery_analysis_version_v1"
+LOTTERY_ANALYSIS_CACHE_PREFIX = "lottery_analysis_cache_v3"
+LOTTERY_MONTH_SUMMARY_CACHE_PREFIX = "lottery_month_summary_cache_v1"
+LOTTERY_ANALYSIS_MEMORY_CACHE = {}
+
+
+class SupabaseConfigurationError(RuntimeError):
+    pass
+
+
+class SupabaseUnavailableError(RuntimeError):
+    pass
+
+
+def validate_supabase_url(raw_url):
+    url = str(raw_url or "").strip()
+    if not url:
+        return ""
+
+    try:
+        parsed = urlparse(url)
+    except ValueError as error:
+        raise SupabaseConfigurationError("SUPABASE_URL is not a valid URL.") from error
+
+    hostname = (parsed.hostname or "").strip()
+    if parsed.scheme not in {"http", "https"} or not hostname:
+        raise SupabaseConfigurationError(
+            "SUPABASE_URL must include a valid http(s) hostname, for example https://your-project.supabase.co."
+        )
+
+    if any(char.isspace() for char in url) or "\"" in url or "'" in url:
+        raise SupabaseConfigurationError(
+            "SUPABASE_URL contains unexpected spaces or quotes. Check the Render environment variable value."
+        )
+
+    return url
+
+
+SUPABASE_URL = validate_supabase_url(settings.SUPABASE_URL)
 supabase: Client | None = (
-    create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
-    if settings.SUPABASE_URL and settings.SUPABASE_KEY
+    create_client(SUPABASE_URL, settings.SUPABASE_KEY)
+    if SUPABASE_URL and settings.SUPABASE_KEY
     else None
 )
 
@@ -63,14 +103,34 @@ def execute_supabase_query(query, operation_name="supabase query"):
     for attempt in range(1, SUPABASE_RETRY_ATTEMPTS + 1):
         try:
             return query.execute()
+        except httpx.ConnectError as error:
+            last_error = error
+            print(f"{operation_name} failed on attempt {attempt}/{SUPABASE_RETRY_ATTEMPTS}: {error}")
+            if attempt >= SUPABASE_RETRY_ATTEMPTS:
+                raise SupabaseUnavailableError(
+                    "Supabase host could not be reached. Check SUPABASE_URL and DNS/network settings."
+                ) from error
+            time.sleep(SUPABASE_RETRY_DELAY_SECONDS * attempt)
         except httpx.HTTPError as error:
             last_error = error
             print(f"{operation_name} failed on attempt {attempt}/{SUPABASE_RETRY_ATTEMPTS}: {error}")
             if attempt >= SUPABASE_RETRY_ATTEMPTS:
-                raise
+                raise SupabaseUnavailableError(
+                    "Supabase request failed after retries. Check SUPABASE_URL, SUPABASE_KEY, and service availability."
+                ) from error
             time.sleep(SUPABASE_RETRY_DELAY_SECONDS * attempt)
     if last_error:
         raise last_error
+
+
+@app.errorhandler(SupabaseConfigurationError)
+def handle_supabase_configuration_error(error):
+    return jsonify({"error": str(error)}), 503
+
+
+@app.errorhandler(SupabaseUnavailableError)
+def handle_supabase_unavailable_error(error):
+    return jsonify({"error": str(error)}), 503
 
 
 def _apply_filters(query, filters=None):
@@ -178,6 +238,40 @@ def get_system_data_json(key, default):
 
 def set_system_data_json(key, value):
     sb_upsert("system_data", {"key": key, "value": dumps_json(value)}, on_conflict="key")
+
+
+def build_system_cache_key(prefix, payload):
+    payload_json = dumps_json(payload)
+    digest = hashlib.sha1(payload_json.encode("utf-8")).hexdigest()[:20]
+    return f"{prefix}:{digest}"
+
+
+def get_cached_system_json(key, default=None):
+    if key in LOTTERY_ANALYSIS_MEMORY_CACHE:
+        return LOTTERY_ANALYSIS_MEMORY_CACHE[key]
+    value = get_system_data_json(key, default)
+    LOTTERY_ANALYSIS_MEMORY_CACHE[key] = value
+    return value
+
+
+def set_cached_system_json(key, value):
+    LOTTERY_ANALYSIS_MEMORY_CACHE[key] = value
+    set_system_data_json(key, value)
+
+
+def get_lottery_analysis_version():
+    payload = get_system_data_json(LOTTERY_ANALYSIS_VERSION_KEY, {"version": 0})
+    try:
+        return max(int(payload.get("version", 0)), 0)
+    except (AttributeError, TypeError, ValueError):
+        return 0
+
+
+def bump_lottery_analysis_version():
+    next_version = get_lottery_analysis_version() + 1
+    set_system_data_json(LOTTERY_ANALYSIS_VERSION_KEY, {"version": next_version, "updated_at": datetime.now().isoformat()})
+    LOTTERY_ANALYSIS_MEMORY_CACHE.clear()
+    return next_version
 
 
 VIDEO_IMPROVEMENT_GOALS_KEY = "video_improvement_goals"
@@ -312,6 +406,162 @@ def set_scrape_status(status, message="", target_month=""):
     set_system_data_json("scrape_status", {"status": status, "message": message, "target_month": target_month})
 
 
+def classify_scraper_failure(output_text, returncode=0):
+    text = (output_text or "").lower()
+
+    if not settings.SCRAPER_USERNAME or not settings.SCRAPER_PASSWORD:
+        return (
+            "config_missing",
+            "\u722c\u87f2\u5e33\u865f\u6216\u5bc6\u78bc\u672a\u8a2d\u5b9a\uff0c\u8acb\u5148\u6aa2\u67e5 Render \u6216 .env \u4e2d\u7684 SCRAPER_USERNAME \u8207 SCRAPER_PASSWORD\u3002",
+        )
+
+    if "login request failed" in text or "login connection error" in text:
+        return (
+            "credential_error",
+            "\u7121\u6cd5\u5b8c\u6210\u53f0\u5927\u79df\u501f\u7cfb\u7d71\u767b\u5165\uff0c\u8acb\u6aa2\u67e5\u722c\u87f2\u5e33\u865f\u5bc6\u78bc\u662f\u5426\u6b63\u78ba\uff0c\u6216\u5148\u624b\u52d5\u767b\u5165\u5f8c\u518d\u8a66\u4e00\u6b21\u3002",
+        )
+
+    if any(marker in text for marker in ["access denied", "forbidden", "non json", "non-json", "doctype html"]):
+        return (
+            "manual_login_required",
+            "\u53f0\u5927\u79df\u501f\u7db2\u7ad9\u62d2\u7d55\u9019\u6b21\u722c\u53d6\uff0c\u591a\u534a\u9700\u8981\u5148\u624b\u52d5\u767b\u5165\u79df\u501f\u7cfb\u7d71\u5f8c\u518d\u91cd\u65b0\u57f7\u884c\u3002",
+        )
+
+    if any(
+        marker in text
+        for marker in [
+            "name or service not known",
+            "temporary failure in name resolution",
+            "connection error",
+            "max retries exceeded",
+            "failed to establish a new connection",
+            "read timed out",
+            "connect timeout",
+            "ssl",
+        ]
+    ):
+        return (
+            "network_error",
+            "\u722c\u87f2\u9023\u7dda\u5931\u6557\uff0c\u53ef\u80fd\u662f\u79df\u501f\u7db2\u7ad9\u6216\u4f3a\u670d\u5668\u66ab\u6642\u7121\u6cd5\u9023\u7dda\uff0c\u8acb\u7a0d\u5f8c\u518d\u8a66\u3002",
+        )
+
+    if "token extraction error" in text or "warning: sk token not found" in text:
+        return (
+            "token_error",
+            "\u5df2\u9023\u4e0a\u79df\u501f\u7db2\u7ad9\uff0c\u4f46\u7121\u6cd5\u53d6\u5f97\u5fc5\u8981\u7684\u9a57\u8b49\u8cc7\u6599\u3002\u7db2\u7ad9\u7d50\u69cb\u53ef\u80fd\u5df2\u8b8a\u66f4\uff0c\u9700\u8981\u6aa2\u67e5\u722c\u87f2\u908f\u8f2f\u3002",
+        )
+
+    if "api error" in text:
+        return (
+            "api_error",
+            "\u53f0\u5927\u79df\u501f\u7cfb\u7d71\u6709\u56de\u61c9\uff0c\u4f46\u56de\u50b3\u5167\u5bb9\u4e0d\u7b26\u9810\u671f\uff0c\u53ef\u80fd\u662f\u7db2\u7ad9\u9650\u5236\u6216\u9801\u9762\u683c\u5f0f\u8b8a\u66f4\u3002",
+        )
+
+    if returncode != 0:
+        return (
+            "process_error",
+            "\u722c\u87f2\u7a0b\u5f0f\u57f7\u884c\u5931\u6557\uff0c\u8acb\u7a0d\u5f8c\u518d\u8a66\uff0c\u82e5\u6301\u7e8c\u767c\u751f\u8acb\u6aa2\u67e5 Render logs\u3002",
+        )
+
+    return (
+        "unknown_error",
+        "\u722c\u87f2\u672a\u5b8c\u6210\uff0c\u4f46\u66ab\u6642\u7121\u6cd5\u5224\u65b7\u5177\u9ad4\u539f\u56e0\uff0c\u8acb\u7a0d\u5f8c\u518d\u8a66\u6216\u6aa2\u67e5 logs\u3002",
+    )
+
+
+def build_scrape_fallback_message(base_message, target_month):
+    month_label = target_month or "\u76ee\u6a19\u6708\u4efd"
+    return f"{base_message}\u76ee\u524d\u5df2\u5148\u6cbf\u7528 {month_label} \u65e2\u6709\u5834\u5730\u8cc7\u6599\u3002"
+
+
+def start_scrape_thread(payload, target_month):
+    def run_scraper_task():
+        try:
+            set_scrape_status("running", "\u722c\u87f2\u57f7\u884c\u4e2d\uff0c\u8acb\u7a0d\u5019\u2026", target_month or "")
+            print(f"Starting scraper for {target_month}...")
+            payload_str = json.dumps(payload)
+            result = subprocess.run(
+                [sys.executable, "main.py", payload_str],
+                capture_output=True,
+                text=True,
+                cwd="drawresult",
+                errors="replace",
+                timeout=SCRAPER_SUBPROCESS_TIMEOUT_SECONDS,
+            )
+            print("Scraper finished. Output:")
+            print(result.stdout)
+            if result.stderr:
+                print("Scraper stderr:", result.stderr)
+
+            combined_output = f"{result.stdout}\n{result.stderr}"
+            combined_output_lower = combined_output.lower()
+            saved_content = get_saved_court_status(target_month)
+            scrape_succeeded = (
+                result.returncode == 0
+                and "successfully retrieved" in combined_output_lower
+                and "no matching courts found" not in combined_output_lower
+            )
+
+            if scrape_succeeded:
+                set_scrape_status("success", "\u722c\u87f2\u5b8c\u6210\uff0c\u5df2\u66f4\u65b0\u5834\u5730\u8cc7\u6599\u3002", target_month or "")
+                return
+
+            failure_code, failure_message = classify_scraper_failure(combined_output, result.returncode)
+            print(f"Scraper classified failure: {failure_code}")
+            if saved_content:
+                set_scrape_status(
+                    "warning",
+                    build_scrape_fallback_message(failure_message, target_month),
+                    target_month or "",
+                )
+            else:
+                set_scrape_status("error", failure_message, target_month or "")
+        except subprocess.TimeoutExpired:
+            print(f"Scraper timed out after {SCRAPER_SUBPROCESS_TIMEOUT_SECONDS} seconds.")
+            if get_saved_court_status(target_month):
+                set_scrape_status(
+                    "warning",
+                    build_scrape_fallback_message(
+                        f"\u722c\u87f2\u8d85\u904e {SCRAPER_SUBPROCESS_TIMEOUT_SECONDS} \u79d2\u4ecd\u672a\u5b8c\u6210\uff0c",
+                        target_month,
+                    ),
+                    target_month or "",
+                )
+            else:
+                set_scrape_status(
+                    "error",
+                    f"\u722c\u87f2\u8d85\u904e {SCRAPER_SUBPROCESS_TIMEOUT_SECONDS} \u79d2\u4ecd\u672a\u5b8c\u6210\uff0c\u8acb\u7a0d\u5f8c\u518d\u8a66\u3002",
+                    target_month or "",
+                )
+        except Exception as error:
+            print(f"Failed to run scraper: {error}")
+            if get_saved_court_status(target_month):
+                set_scrape_status(
+                    "warning",
+                    build_scrape_fallback_message(
+                        "\u722c\u87f2\u57f7\u884c\u904e\u7a0b\u767c\u751f\u4f8b\u5916\uff0c",
+                        target_month,
+                    ),
+                    target_month or "",
+                )
+            else:
+                set_scrape_status(
+                    "error",
+                    "\u722c\u87f2\u57f7\u884c\u904e\u7a0b\u767c\u751f\u4f8b\u5916\uff0c\u8acb\u7a0d\u5f8c\u518d\u8a66\u6216\u6aa2\u67e5 logs\u3002",
+                    target_month or "",
+                )
+
+    thread = threading.Thread(target=run_scraper_task)
+    thread.start()
+
+    return jsonify(
+        {
+            "status": "success",
+            "message": f"Started scraper for {target_month}. Please wait a moment and refresh later.",
+        }
+    )
+
+
 def get_saved_court_status(month_id):
     target_month = normalize_month_id(month_id)
     if not target_month:
@@ -388,10 +638,6 @@ def get_showcase_crop_map():
 
 def set_showcase_crop_map(crop_map):
     set_system_data_json("showcase_photo_crops", crop_map)
-
-
-def resolve_showcase_crop_path(filename):
-    return filename or ""
 
 
 TEAM_RESOURCES_KEY = "team_resources"
@@ -518,11 +764,12 @@ def sort_sections_by_saved_order(sections, order):
 LOTTERY_COURTS = ["Court 4", "Court 5", "Court 6", "Court 7"]
 LOTTERY_TIMES = {"slot1": "18:00-20:00", "slot2": "20:00-22:00"}
 LOTTERY_WEEKDAY_NAMES = ["一", "二", "三", "四", "五", "六", "日"]
-MENU_COMPLEXITY_DEFAULTS = ["拆分", "串接"]
-MENU_DIFFICULTY_DEFAULTS = ["簡單", "困難"]
-MENU_COMPLEXITY_ORDER = {"拆分": 0, "串接": 1}
-MENU_FATIGUE_ORDER = {"輕鬆": 0, "普通": 1, "累": 2}
-MENU_DIFFICULTY_ORDER = {"簡單": 0, "普通": 1, "困難": 2}
+LOTTERY_ACCOUNT_NAMES = ["A", "B", "C", "D", "E"]
+MENU_COMPLEXITY_DEFAULTS = ["basic", "standard"]
+MENU_DIFFICULTY_DEFAULTS = ["beginner", "advanced"]
+MENU_COMPLEXITY_ORDER = {"basic": 0, "standard": 1}
+MENU_FATIGUE_ORDER = {"low": 0, "medium": 1, "high": 2}
+MENU_DIFFICULTY_ORDER = {"beginner": 0, "intermediate": 1, "advanced": 2}
 
 
 def normalize_court_date_value(date_value):
@@ -578,7 +825,7 @@ def parse_json_array(value):
 def split_menu_values(value):
     if value is None:
         return []
-    normalized = str(value).replace("、", ",").replace("，", ",")
+    normalized = str(value).replace(",", ",").replace(";", ",")
     return [item.strip() for item in normalized.split(",") if item.strip()]
 
 
@@ -624,11 +871,11 @@ def deserialize_menu_values(value):
 
 def menu_court_rank(court_modes):
     values = set(court_modes or [])
-    if "有場" in values and "沒場" not in values:
+    if "half" in values and "full" not in values:
         return 0
-    if "有場" in values and "沒場" in values:
+    if "half" in values and "full" in values:
         return 1
-    if "沒場" in values:
+    if "full" in values:
         return 2
     return 3
 
@@ -642,7 +889,7 @@ def normalize_menu_row_payload(payload, existing_id=None):
     payload = payload or {}
     name = str(payload.get("name") or "").strip()
     if not name:
-        raise ValueError("請輸入菜單名稱")
+        raise ValueError("name is required")
 
     try:
         people_count = int(payload.get("people_count") or 0)
@@ -756,12 +1003,6 @@ def fetch_month_content(table_name, month_id):
     return row.get("content") if row else None
 
 
-def get_saved_lottery_bids(month_id):
-    target_month = normalize_month_id(month_id)
-    content = fetch_month_content("lottery_bids", target_month)
-    return build_lottery_month_rows(target_month, parse_json_array(content))
-
-
 def count_lottery_bids(rows):
     total = 0
     for row in rows or []:
@@ -780,7 +1021,7 @@ def extract_court_name(value):
     compact_text = text.replace(" ", "")
     for court in LOTTERY_COURTS:
         court_number = court.replace("Court ", "")
-        if f"場{court_number}" in compact_text:
+        if f"court{court_number}".lower() in compact_text.lower() or f"場{court_number}" in compact_text:
             return court
     return text
 
@@ -920,78 +1161,605 @@ def build_probability_records(month_ids):
     return records, skipped_months
 
 
-def estimate_ticket_probability(records):
-    filtered = [record for record in records if record["bids"] > 0]
-    if not filtered:
-        return 0.001
-
-    best_q = 0.001
-    best_score = float("-inf")
-    for step in range(1, 701):
-        q = step / 1000
-        score = 0.0
-        for record in filtered:
-            win_prob = 1 - ((1 - q) ** record["bids"])
-            win_prob = min(max(win_prob, 1e-9), 1 - 1e-9)
-            score += math.log(win_prob) if record["wins"] else math.log(1 - win_prob)
-        if score > best_score:
-            best_score = score
-            best_q = q
-
-    return best_q
+def get_pool_support_limit(records, minimum=40):
+    max_bids = max([record["bids"] for record in (records or []) if record.get("bids", 0) > 0] or [0])
+    return max(int(minimum), int(max_bids * 15), 20)
 
 
-def summarize_probability_records(records):
-    summary = {}
-    for record in records:
+def group_probability_records_by_pool(records):
+    grouped = {}
+    for record in records or []:
         key = (record["weekday"], record["time"], record["court"])
-        if key not in summary:
-            summary[key] = {
+        if key not in grouped:
+            grouped[key] = {
                 "weekday": key[0],
                 "time": key[1],
                 "court": key[2],
-                "total_bids": 0,
-                "total_wins": 0,
-                "attempts": 0,
                 "records": [],
             }
-        summary[key]["total_bids"] += record["bids"]
-        summary[key]["total_wins"] += record["wins"]
-        summary[key]["attempts"] += 1
-        summary[key]["records"].append(record)
+        grouped[key]["records"].append(record)
+    return grouped
+
+
+def point_estimate_pool_size(records, max_base_tickets):
+    filtered = [record for record in records if record["bids"] > 0]
+    if not filtered:
+        return max(1.0, max_base_tickets / 3)
+
+    min_base = 0
+    best_base = 0
+    best_score = float("-inf")
+    for base_tickets in range(min_base, max_base_tickets + 1):
+        score = 0.0
+        for record in filtered:
+            win_prob = min(max(record["bids"] / (base_tickets + record["bids"]), 1e-9), 1 - 1e-9)
+            score += math.log(win_prob) if record["wins"] else math.log(1 - win_prob)
+        if score > best_score:
+            best_score = score
+            best_base = base_tickets
+    return float(best_base)
+
+
+def normalize_weights(weights):
+    total = sum(weights)
+    if total <= 0:
+        return [1.0 / len(weights)] * len(weights) if weights else []
+    return [weight / total for weight in weights]
+
+
+def build_uniform_prior(max_base_tickets):
+    return [1.0 / (max_base_tickets + 1)] * (max_base_tickets + 1)
+
+
+def build_poisson_prior(max_base_tickets, mean_value):
+    mean_value = max(float(mean_value), 0.1)
+    weights = []
+    for base_tickets in range(max_base_tickets + 1):
+        log_weight = -mean_value + (base_tickets * math.log(mean_value)) - math.lgamma(base_tickets + 1)
+        weights.append(math.exp(log_weight))
+    return normalize_weights(weights)
+
+
+def build_negative_binomial_prior(max_base_tickets, mean_value, variance_value):
+    mean_value = max(float(mean_value), 0.1)
+    variance_value = max(float(variance_value), mean_value + 0.1)
+    dispersion = max((mean_value ** 2) / max(variance_value - mean_value, 0.1), 0.5)
+    success_prob = dispersion / (dispersion + mean_value)
+    weights = []
+    for base_tickets in range(max_base_tickets + 1):
+        log_weight = (
+            math.lgamma(base_tickets + dispersion)
+            - math.lgamma(dispersion)
+            - math.lgamma(base_tickets + 1)
+            + (dispersion * math.log(success_prob))
+            + (base_tickets * math.log(1 - success_prob))
+        )
+        weights.append(math.exp(log_weight))
+    return normalize_weights(weights)
+
+
+def build_empirical_prior(histories, max_base_tickets):
+    if not histories:
+        return build_uniform_prior(max_base_tickets)
+
+    histogram = [1.0] * (max_base_tickets + 1)
+    for history in histories:
+        estimate = int(round(point_estimate_pool_size(history, max_base_tickets)))
+        estimate = max(0, min(max_base_tickets, estimate))
+        histogram[estimate] += 1.0
+    return normalize_weights(histogram)
+
+
+def compute_history_moments(histories, max_base_tickets):
+    estimates = [point_estimate_pool_size(history, max_base_tickets) for history in histories if history]
+    if not estimates:
+        return 12.0, 24.0
+    mean_value = sum(estimates) / len(estimates)
+    variance_value = sum((value - mean_value) ** 2 for value in estimates) / max(len(estimates), 1)
+    variance_value = max(variance_value, mean_value + 1.0)
+    return mean_value, variance_value
+
+
+def build_prior_candidates(pool_histories, max_base_tickets):
+    histories = [item["records"] for item in pool_histories.values() if item.get("records")]
+    mean_value, variance_value = compute_history_moments(histories, max_base_tickets)
+    return {
+        "uniform": build_uniform_prior(max_base_tickets),
+        "poisson": build_poisson_prior(max_base_tickets, mean_value),
+        "negative_binomial": build_negative_binomial_prior(max_base_tickets, mean_value, variance_value),
+        "empirical": build_empirical_prior(histories, max_base_tickets),
+    }
+
+
+def compute_pool_posterior(history, prior):
+    if not prior:
+        return []
+
+    log_weights = []
+    for base_tickets, prior_weight in enumerate(prior):
+        if prior_weight <= 0:
+            log_weights.append(float("-inf"))
+            continue
+        score = math.log(prior_weight)
+        for record in history:
+            bids = max(int(record["bids"]), 0)
+            win_prob = min(max(bids / (base_tickets + bids), 1e-9), 1 - 1e-9) if bids > 0 else 1e-9
+            score += math.log(win_prob) if record["wins"] else math.log(1 - win_prob)
+        log_weights.append(score)
+
+    max_log_weight = max(log_weights)
+    weights = [math.exp(value - max_log_weight) if value != float("-inf") else 0.0 for value in log_weights]
+    return normalize_weights(weights)
+
+
+def predictive_win_probability_from_posterior(posterior, bids):
+    if bids <= 0:
+        return 0.0
+    return sum((bids / (base_tickets + bids)) * weight for base_tickets, weight in enumerate(posterior))
+
+
+def predictive_lose_probability_from_posterior(posterior, bids):
+    if bids <= 0:
+        return 1.0
+    return sum((base_tickets / (base_tickets + bids)) * weight for base_tickets, weight in enumerate(posterior))
+
+
+def posterior_mean(posterior):
+    return sum(base_tickets * weight for base_tickets, weight in enumerate(posterior))
+
+
+def posterior_map(posterior):
+    return max(range(len(posterior)), key=lambda index: posterior[index]) if posterior else 0
+
+
+def posterior_stddev(posterior):
+    mean_value = posterior_mean(posterior)
+    variance = sum((((base_tickets - mean_value) ** 2) * weight) for base_tickets, weight in enumerate(posterior))
+    return math.sqrt(max(variance, 0.0))
+
+
+def posterior_credible_interval(posterior, mass=0.8):
+    lower_tail = (1 - mass) / 2
+    upper_tail = 1 - lower_tail
+    cumulative = 0.0
+    lower_value = 0
+    upper_value = len(posterior) - 1
+    lower_set = False
+    for base_tickets, weight in enumerate(posterior):
+        cumulative += weight
+        if not lower_set and cumulative >= lower_tail:
+            lower_value = base_tickets
+            lower_set = True
+        if cumulative >= upper_tail:
+            upper_value = base_tickets
+            break
+    return {"low": lower_value, "high": upper_value, "mass": mass}
+
+
+def posterior_entropy(posterior):
+    return -sum(weight * math.log(weight) for weight in posterior if weight > 0)
+
+
+def expected_information_gain(history, prior, bids):
+    if bids <= 0:
+        return 0.0
+    base_posterior = compute_pool_posterior(history, prior)
+    win_probability = predictive_win_probability_from_posterior(base_posterior, bids)
+    lose_probability = 1 - win_probability
+    win_entropy = posterior_entropy(compute_pool_posterior(history + [{"bids": bids, "wins": 1}], prior))
+    lose_entropy = posterior_entropy(compute_pool_posterior(history + [{"bids": bids, "wins": 0}], prior))
+    return posterior_entropy(base_posterior) - ((win_probability * win_entropy) + (lose_probability * lose_entropy))
+
+
+def score_prior_model(pool_histories, prior):
+    score = 0.0
+    for item in pool_histories.values():
+        history = item["records"]
+        if not history:
+            continue
+        for index, record in enumerate(history):
+            reduced_history = history[:index] + history[index + 1 :]
+            posterior = compute_pool_posterior(reduced_history, prior)
+            win_probability = predictive_win_probability_from_posterior(posterior, int(record["bids"]))
+            win_probability = min(max(win_probability, 1e-9), 1 - 1e-9)
+            score += math.log(win_probability) if record["wins"] else math.log(1 - win_probability)
+    return score
+
+
+def summarize_probability_records(records):
+    pool_histories = group_probability_records_by_pool(records)
+    max_base_tickets = get_pool_support_limit(records)
+    prior_candidates = build_prior_candidates(pool_histories, max_base_tickets)
+    model_scores = {
+        name: score_prior_model(pool_histories, prior)
+        for name, prior in prior_candidates.items()
+    }
+    selected_model = max(model_scores, key=model_scores.get) if model_scores else "uniform"
+    selected_prior = prior_candidates.get(selected_model, build_uniform_prior(max_base_tickets))
 
     results = []
     weekday_order = {name: index for index, name in enumerate(LOTTERY_WEEKDAY_NAMES)}
     time_order = {"18:00-20:00": 0, "20:00-22:00": 1}
     court_order = {court: index for index, court in enumerate(LOTTERY_COURTS)}
 
-    for item in summary.values():
-        attempts = item["attempts"] or 0
-        item["win_rate"] = round((item["total_wins"] / attempts * 100) if attempts else 0, 1)
-        item["ticket_rate"] = round((item["total_wins"] / item["total_bids"] * 100) if item["total_bids"] else 0, 1)
-        item["avg_bids"] = round((item["total_bids"] / attempts) if attempts else 0, 1)
-        item["ticket_probability"] = round(estimate_ticket_probability(item["records"]) * 100, 1)
-        item.pop("records", None)
-        results.append(item)
+    for item in pool_histories.values():
+        attempts = len(item["records"])
+        total_bids = sum(record["bids"] for record in item["records"])
+        total_wins = sum(record["wins"] for record in item["records"])
+        posterior = compute_pool_posterior(item["records"], selected_prior)
+        mean_base_tickets = posterior_mean(posterior)
+        pool_summary = {
+            "weekday": item["weekday"],
+            "time": item["time"],
+            "court": item["court"],
+            "total_bids": total_bids,
+            "total_wins": total_wins,
+            "attempts": attempts,
+            "win_rate": round((total_wins / attempts * 100) if attempts else 0, 1),
+            "ticket_rate": round((total_wins / total_bids * 100) if total_bids else 0, 1),
+            "avg_bids": round((total_bids / attempts) if attempts else 0, 1),
+            "estimated_pool_tickets": round(mean_base_tickets, 1),
+            "posterior_mean_base_tickets": round(mean_base_tickets, 1),
+            "posterior_stddev": round(posterior_stddev(posterior), 2),
+            "posterior_map_base_tickets": posterior_map(posterior),
+            "credible_interval": posterior_credible_interval(posterior),
+            "ticket_probability": round(predictive_win_probability_from_posterior(posterior, 1) * 100, 1),
+            "predictive_win_probability_by_tickets": {
+                str(bids): round(predictive_win_probability_from_posterior(posterior, bids) * 100, 1)
+                for bids in range(1, 6)
+            },
+            "expected_information_gain_by_tickets": {
+                str(bids): round(expected_information_gain(item["records"], selected_prior, bids), 4)
+                for bids in range(1, 6)
+            },
+            "history": [
+                {
+                    "month_id": record["month_id"],
+                    "date": record["date"],
+                    "bids": record["bids"],
+                    "wins": record["wins"],
+                }
+                for record in item["records"]
+            ],
+        }
+        results.append(pool_summary)
 
     results.sort(key=lambda item: (weekday_order[item["weekday"]], time_order[item["time"]], court_order[item["court"]]))
-    return results
+    return {
+        "selected_model": selected_model,
+        "candidate_models": [
+            {"name": name, "score": round(score, 4)}
+            for name, score in sorted(model_scores.items(), key=lambda entry: entry[1], reverse=True)
+        ],
+        "pool_summaries": results,
+        "prior_support_max": max_base_tickets,
+    }
 
 
-def build_strategy_rows(target_month, probability_stats, weekdays=None, time_weights=None, include_dates=None, exclude_dates=None):
+def build_probability_summary_bundle(month_ids):
+    normalized_month_ids = [month_id for month_id in (normalize_month_id(value) for value in (month_ids or [])) if month_id]
+    version = get_lottery_analysis_version()
+    cache_key = build_system_cache_key(
+        LOTTERY_ANALYSIS_CACHE_PREFIX,
+        {
+            "version": version,
+            "month_ids": normalized_month_ids,
+        },
+    )
+    cached = get_cached_system_json(cache_key, None)
+    if cached:
+        return cached
+
+    records, skipped_months = build_probability_records(normalized_month_ids)
+    payload = {
+        "months_used": [month_id for month_id in normalized_month_ids if month_id not in skipped_months],
+        "skipped_months": skipped_months,
+        "summary": summarize_probability_records(records),
+    }
+    set_cached_system_json(cache_key, payload)
+    return payload
+
+
+def build_uniform_average_probability_summary(probability_summary):
+    source_items = list((probability_summary or {}).get("pool_summaries", []))
+    if not source_items:
+        return {
+            "selected_model": "uniform",
+            "candidate_models": [],
+            "pool_summaries": [],
+            "prior_support_max": 40,
+        }
+
+    predictive_keys = [str(index) for index in range(1, 6)]
+    mean_base = round(sum(float(item.get("posterior_mean_base_tickets") or 0) for item in source_items) / len(source_items), 1)
+    stddev = round(sum(float(item.get("posterior_stddev") or 0) for item in source_items) / len(source_items), 2)
+    total_bids = int(round(sum(float(item.get("total_bids") or 0) for item in source_items) / len(source_items)))
+    total_wins = int(round(sum(float(item.get("total_wins") or 0) for item in source_items) / len(source_items)))
+    attempts = int(round(sum(float(item.get("attempts") or 0) for item in source_items) / len(source_items)))
+    predictive = {}
+    info_gain = {}
+    for key in predictive_keys:
+        predictive[key] = round(
+            sum(float((item.get("predictive_win_probability_by_tickets") or {}).get(key, 0)) for item in source_items) / len(source_items),
+            1,
+        )
+        info_gain[key] = round(
+            sum(float((item.get("expected_information_gain_by_tickets") or {}).get(key, 0)) for item in source_items) / len(source_items),
+            4,
+        )
+    interval_lows = [int((item.get("credible_interval") or {}).get("low", 0)) for item in source_items]
+    interval_highs = [int((item.get("credible_interval") or {}).get("high", 0)) for item in source_items]
+    averaged_item = {
+        "posterior_mean_base_tickets": mean_base,
+        "posterior_stddev": stddev,
+        "credible_interval": {"low": min(interval_lows), "high": max(interval_highs), "mass": 0.8},
+        "predictive_win_probability_by_tickets": predictive,
+        "expected_information_gain_by_tickets": info_gain,
+        "total_bids": total_bids,
+        "total_wins": total_wins,
+        "attempts": attempts,
+        "win_rate": round((total_wins / attempts * 100) if attempts else 0, 1),
+        "ticket_rate": round((total_wins / total_bids * 100) if total_bids else 0, 1),
+        "avg_bids": round((total_bids / attempts) if attempts else 0, 1),
+        "estimated_pool_tickets": mean_base,
+        "posterior_map_base_tickets": int(round(mean_base)),
+        "ticket_probability": predictive.get("1", 0),
+    }
+
+    replicated_items = []
+    for weekday in LOTTERY_WEEKDAY_NAMES:
+        for time_label in LOTTERY_TIMES.values():
+            for court in LOTTERY_COURTS:
+                item = dict(averaged_item)
+                item["weekday"] = weekday
+                item["time"] = time_label
+                item["court"] = court
+                replicated_items.append(item)
+
+    return {
+        "selected_model": (probability_summary or {}).get("selected_model", "uniform"),
+        "candidate_models": list((probability_summary or {}).get("candidate_models", [])),
+        "pool_summaries": replicated_items,
+        "prior_support_max": (probability_summary or {}).get("prior_support_max", 40),
+    }
+
+
+def build_lottery_bids_month_summary():
+    version = get_lottery_analysis_version()
+    cache_key = build_system_cache_key(LOTTERY_MONTH_SUMMARY_CACHE_PREFIX, {"version": version})
+    cached = get_cached_system_json(cache_key, None)
+    if cached:
+        return cached
+
+    summary = []
+    month_ids = sorted(
+        set(fetch_existing_month_ids("lottery_bids")) | set(fetch_existing_month_ids("court_status")),
+        reverse=True,
+    )
+    for month_id in month_ids:
+        bid_content = fetch_month_content("lottery_bids", month_id)
+        court_content = fetch_month_content("court_status", month_id)
+        bid_rows = build_lottery_month_rows(month_id, parse_json_array(bid_content)) if bid_content is not None else []
+        court_rows = parse_court_status_rows(court_content) if court_content is not None else []
+        summary.append(
+            {
+                "month_id": month_id,
+                "total_bids": count_lottery_bids(bid_rows),
+                "has_bid_data": len(bid_rows) > 0,
+                "has_court_data": len(court_rows) > 0,
+            }
+        )
+
+    payload = {"months": summary}
+    set_cached_system_json(cache_key, payload)
+    return payload
+
+
+def build_account_bid_plan(target_month):
+    normalized_month = normalize_month_id(target_month)
+    if not normalized_month:
+        return {
+            "target_month": target_month,
+            "accounts": [],
+            "total_tickets": 0,
+            "unassigned_tickets": [],
+            "status": "invalid_month",
+            "message": "Invalid target month.",
+        }
+
+    saved_content = fetch_month_content("lottery_bids", normalized_month)
+    rows = build_lottery_month_rows(normalized_month, parse_json_array(saved_content))
+    ticket_requests = []
+    total_tickets = 0
+
+    for row in rows:
+        date_value = row.get("date")
+        if not date_value:
+            continue
+        weekday_name = LOTTERY_WEEKDAY_NAMES[datetime.strptime(date_value, "%Y-%m-%d").weekday()]
+        for slot_key, time_label in LOTTERY_TIMES.items():
+            slot_data = normalize_lottery_slot(row.get(slot_key) or {})
+            for court in LOTTERY_COURTS:
+                tickets = max(int(slot_data.get(court, 0) or 0), 0)
+                if tickets <= 0:
+                    continue
+                ticket_requests.append(
+                    {
+                        "date": date_value,
+                        "weekday": weekday_name,
+                        "time": time_label,
+                        "court": court,
+                        "tickets": tickets,
+                    }
+                )
+                total_tickets += tickets
+
+    account_state = {
+        name: {
+            "account": name,
+            "capacity": 10,
+            "tickets_used": 0,
+            "assignments": [],
+            "slot_counts": {},
+        }
+        for name in LOTTERY_ACCOUNT_NAMES
+    }
+    unassigned_tickets = []
+
+    ticket_requests.sort(key=lambda item: (-item["tickets"], item["date"], item["time"], LOTTERY_COURTS.index(item["court"])))
+
+    for request in ticket_requests:
+        slot_key = f"{request['date']}|{request['time']}"
+        eligible_accounts = [
+            state for state in account_state.values()
+            if state["tickets_used"] < state["capacity"]
+        ]
+        eligible_accounts.sort(
+            key=lambda state: (
+                state["tickets_used"],
+                state["slot_counts"].get(slot_key, 0),
+                state["account"],
+            )
+        )
+        assigned_accounts = eligible_accounts[: request["tickets"]]
+        assigned_count = len(assigned_accounts)
+
+        for state in assigned_accounts:
+            state["tickets_used"] += 1
+            state["slot_counts"][slot_key] = state["slot_counts"].get(slot_key, 0) + 1
+            state["assignments"].append(
+                {
+                    "date": request["date"],
+                    "weekday": request["weekday"],
+                    "time": request["time"],
+                    "court": request["court"],
+                }
+            )
+
+        if assigned_count < request["tickets"]:
+            unassigned_tickets.append(
+                {
+                    "date": request["date"],
+                    "weekday": request["weekday"],
+                    "time": request["time"],
+                    "court": request["court"],
+                    "unassigned_count": request["tickets"] - assigned_count,
+                }
+            )
+
+    accounts = []
+    for name in LOTTERY_ACCOUNT_NAMES:
+        state = account_state[name]
+        state["assignments"].sort(key=lambda item: (item["date"], 0 if item["time"] == "18:00-20:00" else 1, LOTTERY_COURTS.index(item["court"])))
+        accounts.append(
+            {
+                "account": name,
+                "tickets_used": state["tickets_used"],
+                "remaining_capacity": state["capacity"] - state["tickets_used"],
+                "assignments": state["assignments"],
+            }
+        )
+
+    status = "ok"
+    message = ""
+    if total_tickets == 0:
+        status = "empty"
+        message = "目標月份目前還沒有輸入投籤紀錄。"
+    elif unassigned_tickets:
+        status = "partial"
+        message = "部分投籤超出五個帳號總容量或分配限制，仍有未分配的籤。"
+
+    return {
+        "target_month": normalized_month,
+        "accounts": accounts,
+        "total_tickets": total_tickets,
+        "unassigned_tickets": unassigned_tickets,
+        "status": status,
+        "message": message,
+    }
+
+
+def build_candidate_pools(target_month, probability_summary, weekdays=None, include_dates=None, exclude_dates=None, courts=None):
     month_id = normalize_month_id(target_month)
     if not month_id:
         return []
 
-    selected_weekdays = weekdays or [1, 3]
-    time_weights = time_weights or {"18:00-20:00": 1.0, "20:00-22:00": 1.0}
+    selected_weekdays = weekdays or list(range(7))
+    selected_courts = list(courts or LOTTERY_COURTS)
     included_date_set = {normalize_court_date_value(value) for value in (include_dates or []) if normalize_court_date_value(value)}
     excluded_date_set = {normalize_court_date_value(value) for value in (exclude_dates or []) if normalize_court_date_value(value)}
-    stat_map = {(item["weekday"], item["time"], item["court"]): item for item in probability_stats}
+    pool_summaries = list((probability_summary or {}).get("pool_summaries", []))
+    summary_map = {
+        (item["weekday"], item["time"], item["court"]): item
+        for item in pool_summaries
+    }
+    time_court_map = {}
+    court_map = {}
+    global_fallback = None
+
+    def average_summary(items, fallback_source="aggregate"):
+        predictive_keys = [str(index) for index in range(1, 6)]
+        mean_base = round(sum(float(entry.get("posterior_mean_base_tickets") or 0) for entry in items) / len(items), 1)
+        stddev = round(sum(float(entry.get("posterior_stddev") or 0) for entry in items) / len(items), 2)
+        total_bids = int(round(sum(float(entry.get("total_bids") or 0) for entry in items) / len(items)))
+        total_wins = int(round(sum(float(entry.get("total_wins") or 0) for entry in items) / len(items)))
+        attempts = int(round(sum(float(entry.get("attempts") or 0) for entry in items) / len(items)))
+        predictive = {}
+        info_gain = {}
+        for key in predictive_keys:
+            values = [float((entry.get("predictive_win_probability_by_tickets") or {}).get(key, 0)) for entry in items]
+            predictive[key] = round(sum(values) / len(values), 1)
+            gain_values = [float((entry.get("expected_information_gain_by_tickets") or {}).get(key, 0)) for entry in items]
+            info_gain[key] = round(sum(gain_values) / len(gain_values), 4)
+        lows = [int((entry.get("credible_interval") or {}).get("low", 0)) for entry in items]
+        highs = [int((entry.get("credible_interval") or {}).get("high", 0)) for entry in items]
+        return {
+            "posterior_mean_base_tickets": mean_base,
+            "posterior_stddev": stddev,
+            "credible_interval": {"low": min(lows), "high": max(highs), "mass": 0.8},
+            "predictive_win_probability_by_tickets": predictive,
+            "expected_information_gain_by_tickets": info_gain,
+            "total_bids": total_bids,
+            "total_wins": total_wins,
+            "attempts": attempts,
+            "fallback_source": fallback_source,
+        }
+
+    def make_candidate_pool(date_key, weekday_name, time_label, court, summary, fallback_source=None):
+        return {
+            "pool_id": f"{date_key}|{time_label}|{court}",
+            "date": date_key,
+            "weekday": weekday_name,
+            "time": time_label,
+            "court": court,
+            "template_key": f"{weekday_name}|{time_label}|{court}",
+            "posterior_mean_base_tickets": summary["posterior_mean_base_tickets"],
+            "posterior_stddev": summary["posterior_stddev"],
+            "credible_interval": summary["credible_interval"],
+            "predictive_win_probability_by_tickets": summary["predictive_win_probability_by_tickets"],
+            "expected_information_gain_by_tickets": summary["expected_information_gain_by_tickets"],
+            "total_bids": summary["total_bids"],
+            "total_wins": summary["total_wins"],
+            "attempts": summary["attempts"],
+            "fallback_source": fallback_source or summary.get("fallback_source", "exact"),
+        }
+
+    if pool_summaries:
+        grouped_time_court = {}
+        grouped_court = {}
+        for item in pool_summaries:
+            grouped_time_court.setdefault((item["time"], item["court"]), []).append(item)
+            grouped_court.setdefault(item["court"], []).append(item)
+
+        for key, items in grouped_time_court.items():
+            time_court_map[key] = average_summary(items, fallback_source="time_court")
+        for key, items in grouped_court.items():
+            court_map[key] = average_summary(items, fallback_source="court")
+        global_fallback = average_summary(pool_summaries, fallback_source="global")
     year, month = map(int, month_id.split("-"))
     last_day = calendar.monthrange(year, month)[1]
-    slots = []
-    total_budget = 50
+    candidate_pools = []
+    pending_pools = []
 
     for day in range(1, last_day + 1):
         date_obj = date(year, month, day)
@@ -1004,84 +1772,447 @@ def build_strategy_rows(target_month, probability_stats, weekdays=None, time_wei
         weekday_name = LOTTERY_WEEKDAY_NAMES[weekday_num]
 
         for time_label in LOTTERY_TIMES.values():
-            slot = {
-                "date": date_key,
-                "weekday": weekday_name,
-                "time": time_label,
-                "allocations": {court: 0 for court in LOTTERY_COURTS},
-                "probabilities": {},
-            }
-            for court in LOTTERY_COURTS:
-                stat = stat_map.get((weekday_name, time_label, court))
-                slot["probabilities"][court] = (stat["ticket_probability"] / 100.0) if stat else 0.001
-            slots.append(slot)
+            for court in selected_courts:
+                summary = summary_map.get((weekday_name, time_label, court))
+                if summary:
+                    candidate_pools.append(make_candidate_pool(date_key, weekday_name, time_label, court, summary, fallback_source="exact"))
+                    continue
+                pending_pools.append(
+                    {
+                        "date": date_key,
+                        "weekday": weekday_name,
+                        "time": time_label,
+                        "court": court,
+                    }
+                )
 
-    if not slots:
-        return []
+    exact_slot_groups = {}
+    exact_court_groups = {}
+    for pool in candidate_pools:
+        if pool.get("fallback_source") != "exact":
+            continue
+        exact_slot_groups.setdefault((pool["date"], pool["time"]), []).append(pool)
+        exact_court_groups.setdefault(pool["court"], []).append(pool)
 
-    def slot_total_bids(slot):
-        return sum(slot["allocations"].values())
+    for pending in pending_pools:
+        summary = None
+        fallback_source = None
+        same_slot_items = exact_slot_groups.get((pending["date"], pending["time"]), [])
+        if same_slot_items:
+            summary = average_summary(same_slot_items, fallback_source="same_day_time")
+            fallback_source = "same_day_time"
+        if not summary:
+            same_court_items = exact_court_groups.get(pending["court"], [])
+            if same_court_items:
+                summary = average_summary(same_court_items, fallback_source="same_court")
+                fallback_source = "same_court"
+        if not summary:
+            summary = time_court_map.get((pending["time"], pending["court"]))
+            fallback_source = "time_court" if summary else fallback_source
+        if not summary:
+            summary = court_map.get(pending["court"])
+            fallback_source = "court" if summary else fallback_source
+        if not summary:
+            summary = global_fallback
+            fallback_source = "global" if summary else fallback_source
+        if not summary:
+            continue
+        candidate_pools.append(
+            make_candidate_pool(
+                pending["date"],
+                pending["weekday"],
+                pending["time"],
+                pending["court"],
+                summary,
+                fallback_source=fallback_source,
+            )
+        )
 
-    def slot_success(slot):
-        loss_prob = 1.0
-        for court in LOTTERY_COURTS:
-            loss_prob *= (1 - slot["probabilities"][court]) ** slot["allocations"][court]
-        return 1 - loss_prob
+    candidate_pools.sort(key=lambda item: (item["date"], 0 if item["time"] == "18:00-20:00" else 1, LOTTERY_COURTS.index(item["court"])))
+    return candidate_pools
 
-    def date_success(date_key):
-        related_slots = [slot for slot in slots if slot["date"] == date_key]
-        loss_prob = 1.0
-        for slot in related_slots:
-            loss_prob *= (1 - slot_success(slot))
-        return 1 - loss_prob
 
-    def slot_weight(slot):
-        return max(float(time_weights.get(slot["time"], 1.0)), 0.01)
+def get_pool_win_probability(pool, tickets):
+    predictive_map = pool.get("predictive_win_probability_by_tickets", {})
+    if tickets <= 0:
+        return 0.0
+    return float(predictive_map.get(str(tickets), 0)) / 100.0
 
-    def total_month_utility():
-        return sum(slot_weight(slot) * slot_success(slot) for slot in slots)
 
-    unique_dates = sorted({slot["date"] for slot in slots})
+def compute_time_balance_score(time_to_slot_success, time_weights=None):
+    time_weights = time_weights or {}
+    normalized_time_weights = {
+        time_label: max(float(time_weights.get(time_label, 1.0)), 0.0001)
+        for time_label in LOTTERY_TIMES.values()
+    }
+    total_success = sum(float(value) for value in (time_to_slot_success or {}).values())
+    if total_success <= 0:
+        return 0.0
+    total_weight = sum(normalized_time_weights.values()) or 1.0
+    penalty = 0.0
+    for time_label in LOTTERY_TIMES.values():
+        desired_share = normalized_time_weights[time_label] / total_weight
+        actual_share = float((time_to_slot_success or {}).get(time_label, 0.0)) / total_success
+        penalty += abs(actual_share - desired_share)
+    return -penalty
 
-    for _ in range(total_budget):
-        candidates = [slot for slot in slots if slot_total_bids(slot) < 5]
-        if not candidates:
-            break
 
-        baseline_total = total_month_utility()
-        best_choice = None
-        best_gain = float("-inf")
-        for slot in candidates:
-            for court in LOTTERY_COURTS:
-                slot["allocations"][court] += 1
-                gain = total_month_utility() - baseline_total
-                slot["allocations"][court] -= 1
-                if gain > best_gain:
-                    best_gain = gain
-                    best_choice = (slot, court)
+def evaluate_allocation_metrics(candidate_pools, allocations, time_weights=None):
+    time_weights = time_weights or {}
+    expected_total_wins = 0.0
+    date_to_lose_probability = {}
+    slot_to_lose_probability = {}
+    time_to_slot_success = {time_label: 0.0 for time_label in LOTTERY_TIMES.values()}
+    expected_weighted_winning_slots = 0.0
+    expected_weighted_total_wins = 0.0
+    active_pool_count = 0
+    for pool, tickets in zip(candidate_pools, allocations):
+        win_probability = get_pool_win_probability(pool, tickets)
+        expected_total_wins += win_probability
+        weight = float(time_weights.get(pool["time"], 1.0))
+        expected_weighted_total_wins += win_probability * weight
+        if tickets > 0:
+            active_pool_count += 1
+        date_key = pool["date"]
+        slot_key = f"{pool['date']}|{pool['time']}"
+        date_to_lose_probability.setdefault(date_key, 1.0)
+        date_to_lose_probability[date_key] *= (1 - win_probability)
+        slot_to_lose_probability.setdefault(slot_key, 1.0)
+        slot_to_lose_probability[slot_key] *= (1 - win_probability)
 
-        if not best_choice:
-            break
+    expected_winning_days = sum(1 - lose_probability for lose_probability in date_to_lose_probability.values())
+    expected_winning_slots = 0.0
+    for slot_key, lose_probability in slot_to_lose_probability.items():
+        _date_key, time_label = slot_key.split("|", 1)
+        weight = float(time_weights.get(time_label, 1.0))
+        slot_win_probability = 1 - lose_probability
+        expected_winning_slots += slot_win_probability
+        expected_weighted_winning_slots += slot_win_probability * weight
+        time_to_slot_success[time_label] = time_to_slot_success.get(time_label, 0.0) + slot_win_probability
+    probability_at_least_one_win = 1 - math.prod(date_to_lose_probability.values()) if date_to_lose_probability else 0.0
+    return {
+        "expected_winning_days": expected_winning_days,
+        "expected_winning_slots": expected_winning_slots,
+        "expected_weighted_winning_slots": expected_weighted_winning_slots,
+        "expected_total_wins": expected_total_wins,
+        "expected_weighted_total_wins": expected_weighted_total_wins,
+        "time_to_slot_success": time_to_slot_success,
+        "time_balance_score": compute_time_balance_score(time_to_slot_success, time_weights),
+        "active_pool_count": active_pool_count,
+        "probability_at_least_one_win": probability_at_least_one_win,
+    }
 
-        chosen_slot, chosen_court = best_choice
-        chosen_slot["allocations"][chosen_court] += 1
 
-    rows = []
-    for slot in slots:
-        rows.append(
+def optimize_pool_allocations(candidate_pools, total_tickets, top_n=5, per_pool_cap=5, time_weights=None, beam_width=120):
+    total_tickets = max(int(total_tickets or 0), 0)
+    time_weights = time_weights or {}
+    if not candidate_pools:
+        return {"recommended_allocation": None, "alternatives": []}
+
+    def build_state_score_tuple(item):
+        return (
+            item["expected_winning_days"],
+            item["expected_weighted_winning_slots"],
+            item["expected_weighted_total_wins"],
+            item["expected_winning_slots"],
+            item["expected_total_wins"],
+            item["time_balance_score"],
+            item["active_pool_count"],
+            item["probability_at_least_one_win"],
+        )
+
+    total_slots = len({(pool["date"], pool["time"]) for pool in candidate_pools})
+    if total_slots > 24 or len(candidate_pools) > 72 or total_tickets > 24:
+        allocations = [0] * len(candidate_pools)
+        best_metrics = evaluate_allocation_metrics(candidate_pools, allocations, time_weights)
+
+        for _ in range(total_tickets):
+            best_choice = None
+            best_choice_metrics = None
+            best_choice_score = None
+            for index, current_tickets in enumerate(allocations):
+                if current_tickets >= per_pool_cap:
+                    continue
+                trial_allocations = list(allocations)
+                trial_allocations[index] += 1
+                trial_metrics = evaluate_allocation_metrics(candidate_pools, trial_allocations, time_weights)
+                trial_score = build_state_score_tuple(trial_metrics)
+                if best_choice is None or trial_score > best_choice_score:
+                    best_choice = index
+                    best_choice_metrics = trial_metrics
+                    best_choice_score = trial_score
+            if best_choice is None:
+                break
+            allocations[best_choice] += 1
+            best_metrics = best_choice_metrics
+
+        recommended = {
+            "rank": 1,
+            "allocation_vector": allocations,
+            "expected_winning_days": round(best_metrics["expected_winning_days"], 2),
+            "expected_winning_slots": round(best_metrics["expected_winning_slots"], 2),
+            "expected_weighted_winning_slots": round(best_metrics["expected_weighted_winning_slots"], 2),
+            "expected_total_wins": round(best_metrics["expected_total_wins"], 2),
+            "expected_weighted_total_wins": round(best_metrics["expected_weighted_total_wins"], 2),
+            "active_pool_count": best_metrics["active_pool_count"],
+            "probability_at_least_one_win": round(best_metrics["probability_at_least_one_win"] * 100, 1),
+            "allocation_by_pool": [
+                {
+                    "pool_id": pool["pool_id"],
+                    "date": pool["date"],
+                    "weekday": pool["weekday"],
+                    "time": pool["time"],
+                    "court": pool["court"],
+                    "tickets": tickets,
+                }
+                for pool, tickets in zip(candidate_pools, allocations)
+                if tickets > 0
+            ],
+        }
+        return {"recommended_allocation": recommended, "alternatives": [recommended]}
+
+    def build_slot_option_score_tuple(item):
+        return (
+            item["slot_win_probability"] * item["slot_weight"],
+            item["expected_weighted_total_wins"],
+            item["slot_win_probability"],
+            item["expected_total_wins"],
+            item["active_pool_count"],
+        )
+
+    pools_by_slot = {}
+    for index, pool in enumerate(candidate_pools):
+        slot_key = (pool["date"], pool["time"])
+        pools_by_slot.setdefault(slot_key, []).append((index, pool))
+
+    slot_options = []
+    for slot_key in sorted(pools_by_slot.keys()):
+        slot_pools = pools_by_slot[slot_key]
+        options = []
+        slot_date, slot_time = slot_key
+        slot_weight = float(time_weights.get(slot_time, 1.0))
+
+        def enumerate_allocations(position, remaining_tickets, current_allocations):
+            if position >= len(slot_pools):
+                tickets_used = sum(tickets for _, tickets in current_allocations)
+                slot_lose_probability = 1.0
+                expected_total_wins = 0.0
+                active_pool_count = 0
+                allocation_items = []
+                for pool_index, tickets in current_allocations:
+                    if tickets <= 0:
+                        continue
+                    pool = candidate_pools[pool_index]
+                    win_probability = get_pool_win_probability(pool, tickets)
+                    slot_lose_probability *= (1 - win_probability)
+                    expected_total_wins += win_probability
+                    active_pool_count += 1
+                    allocation_items.append((pool_index, tickets))
+                slot_win_probability = 1 - slot_lose_probability
+                options.append(
+                    {
+                        "tickets_used": tickets_used,
+                        "slot_date": slot_date,
+                        "slot_time": slot_time,
+                        "slot_weight": slot_weight,
+                        "slot_lose_probability": slot_lose_probability,
+                        "slot_win_probability": slot_win_probability,
+                        "allocation_items": allocation_items,
+                        "expected_total_wins": expected_total_wins,
+                        "expected_weighted_total_wins": expected_total_wins * slot_weight,
+                        "active_pool_count": active_pool_count,
+                    }
+                )
+                return
+
+            pool_index, _pool = slot_pools[position]
+            for tickets in range(min(per_pool_cap, remaining_tickets) + 1):
+                enumerate_allocations(position + 1, remaining_tickets - tickets, current_allocations + [(pool_index, tickets)])
+
+        enumerate_allocations(0, total_tickets, [])
+        per_ticket_best = {}
+        for option in options:
+            key = option["tickets_used"]
+            current_best = per_ticket_best.get(key)
+            score_tuple = build_slot_option_score_tuple(option)
+            if not current_best or score_tuple > build_slot_option_score_tuple(current_best):
+                per_ticket_best[key] = option
+        slot_options.append([per_ticket_best[key] for key in sorted(per_ticket_best.keys())])
+
+    states = {
+        0: [
             {
-                "date": slot["date"],
-                "weekday": slot["weekday"],
-                "time": slot["time"],
-                "allocations": slot["allocations"],
-                "success_rate": round(slot_success(slot) * 100, 1),
-                "date_success_rate": round(date_success(slot["date"]) * 100, 1),
-                "total_bids": slot_total_bids(slot),
+                "allocations": {},
+                "date_to_lose_probability": {},
+                "time_to_slot_success": {time_label: 0.0 for time_label in LOTTERY_TIMES.values()},
+                "expected_winning_days": 0.0,
+                "expected_winning_slots": 0.0,
+                "expected_weighted_winning_slots": 0.0,
+                "expected_total_wins": 0.0,
+                "expected_weighted_total_wins": 0.0,
+                "time_balance_score": 0.0,
+                "active_pool_count": 0,
+                "all_days_lose_probability": 1.0,
+                "probability_at_least_one_win": 0.0,
+            }
+        ]
+    }
+    for options in slot_options:
+        next_states = {}
+        for used_tickets, entries in states.items():
+            for entry in entries:
+                for option in options:
+                    new_total = used_tickets + option["tickets_used"]
+                    if new_total > total_tickets:
+                        continue
+                    previous_day_lose_probability = entry["date_to_lose_probability"].get(option["slot_date"], 1.0)
+                    next_day_lose_probability = previous_day_lose_probability * option["slot_lose_probability"]
+                    next_date_to_lose_probability = dict(entry["date_to_lose_probability"])
+                    next_date_to_lose_probability[option["slot_date"]] = next_day_lose_probability
+                    combined_allocations = dict(entry["allocations"])
+                    for pool_index, tickets in option["allocation_items"]:
+                        combined_allocations[pool_index] = tickets
+                    next_time_to_slot_success = dict(entry["time_to_slot_success"])
+                    next_time_to_slot_success[option["slot_time"]] = next_time_to_slot_success.get(option["slot_time"], 0.0) + option["slot_win_probability"]
+                    expected_winning_days = (
+                        entry["expected_winning_days"]
+                        - (1 - previous_day_lose_probability)
+                        + (1 - next_day_lose_probability)
+                    )
+                    candidate_entry = {
+                        "allocations": combined_allocations,
+                        "date_to_lose_probability": next_date_to_lose_probability,
+                        "time_to_slot_success": next_time_to_slot_success,
+                        "expected_winning_days": expected_winning_days,
+                        "expected_winning_slots": entry["expected_winning_slots"] + option["slot_win_probability"],
+                        "expected_weighted_winning_slots": entry["expected_weighted_winning_slots"] + (option["slot_win_probability"] * option["slot_weight"]),
+                        "expected_total_wins": entry["expected_total_wins"] + option["expected_total_wins"],
+                        "expected_weighted_total_wins": entry["expected_weighted_total_wins"] + option["expected_weighted_total_wins"],
+                        "time_balance_score": 0.0,
+                        "active_pool_count": entry["active_pool_count"] + option["active_pool_count"],
+                        "all_days_lose_probability": entry["all_days_lose_probability"] / previous_day_lose_probability * next_day_lose_probability if previous_day_lose_probability > 0 else math.prod(next_date_to_lose_probability.values()),
+                        "probability_at_least_one_win": 0.0,
+                    }
+                    candidate_entry["time_balance_score"] = compute_time_balance_score(next_time_to_slot_success)
+                    candidate_entry["probability_at_least_one_win"] = 1 - candidate_entry["all_days_lose_probability"]
+                    next_states.setdefault(new_total, []).append(candidate_entry)
+        for used_tickets, entries in next_states.items():
+            entries.sort(key=build_state_score_tuple, reverse=True)
+            deduped = []
+            seen = set()
+            for item in entries:
+                key = tuple(sorted(item["allocations"].items()))
+                if key in seen:
+                    continue
+                seen.add(key)
+                deduped.append(item)
+                if len(deduped) >= beam_width:
+                    break
+            next_states[used_tickets] = deduped
+        states = next_states
+
+    final_entries = states.get(total_tickets, [])
+    if not final_entries:
+        return {"recommended_allocation": None, "alternatives": []}
+
+    final_entries.sort(key=build_state_score_tuple, reverse=True)
+
+    alternatives = []
+    for rank, entry in enumerate(final_entries[:top_n], start=1):
+        allocation_vector = [entry["allocations"].get(index, 0) for index in range(len(candidate_pools))]
+        alternatives.append(
+            {
+                "rank": rank,
+                "allocation_vector": allocation_vector,
+                "expected_winning_days": round(entry["expected_winning_days"], 2),
+                "expected_winning_slots": round(entry["expected_winning_slots"], 2),
+                "expected_weighted_winning_slots": round(entry["expected_weighted_winning_slots"], 2),
+                "expected_total_wins": round(entry["expected_total_wins"], 2),
+                "expected_weighted_total_wins": round(entry["expected_weighted_total_wins"], 2),
+                "active_pool_count": entry["active_pool_count"],
+                "probability_at_least_one_win": round(entry["probability_at_least_one_win"] * 100, 1),
+                "allocation_by_pool": [
+                    {
+                        "pool_id": pool["pool_id"],
+                        "date": pool["date"],
+                        "weekday": pool["weekday"],
+                        "time": pool["time"],
+                        "court": pool["court"],
+                        "tickets": tickets,
+                    }
+                    for pool, tickets in zip(candidate_pools, allocation_vector)
+                    if tickets > 0
+                ],
             }
         )
 
-    rows.sort(key=lambda item: (item["date"], 0 if item["time"] == "18:00-20:00" else 1))
-    return rows
+    recommended = alternatives[0]
+    return {"recommended_allocation": recommended, "alternatives": alternatives}
+
+
+def build_strategy_explanation(candidate_pools, recommended_allocation, second_best_allocation=None):
+    if not recommended_allocation:
+        return "No eligible pools are available for optimization."
+
+    top_pools = sorted(recommended_allocation["allocation_by_pool"], key=lambda item: item["tickets"], reverse=True)[:3]
+    if not top_pools:
+        return "The optimizer recommends holding tickets because no pool had usable history."
+
+    fragments = []
+    for pool_entry in top_pools:
+        matched_pool = next((pool for pool in candidate_pools if pool["pool_id"] == pool_entry["pool_id"]), None)
+        if not matched_pool:
+            continue
+        fragments.append(
+            f"{pool_entry['date']} {pool_entry['time']} {pool_entry['court']} "
+            f"(base {matched_pool['posterior_mean_base_tickets']:.1f}, +/- {matched_pool['posterior_stddev']:.1f})"
+        )
+
+    explanation = "Recommended tickets prioritize spreading winning chances across more days, then improving each time-slot success rate, and finally increasing expected total court wins."
+    if fragments:
+        explanation += " Top weighted pools: " + "; ".join(fragments) + "."
+    if second_best_allocation:
+        day_gap = recommended_allocation["expected_winning_days"] - second_best_allocation["expected_winning_days"]
+        slot_gap = recommended_allocation["expected_winning_slots"] - second_best_allocation["expected_winning_slots"]
+        win_gap = recommended_allocation["expected_total_wins"] - second_best_allocation["expected_total_wins"]
+        explanation += f" It beats the next alternative by {day_gap:.2f} expected winning days, {slot_gap:.2f} expected winning slots, and {win_gap:.2f} expected courts."
+    return explanation
+
+
+def build_strategy_plan(target_month, probability_summary, weekdays=None, include_dates=None, exclude_dates=None, courts=None, total_tickets=5, top_n=5, time_weights=None):
+    candidate_pools = build_candidate_pools(
+        target_month,
+        probability_summary,
+        weekdays=weekdays,
+        include_dates=include_dates,
+        exclude_dates=exclude_dates,
+        courts=courts,
+    )
+    optimization = optimize_pool_allocations(candidate_pools, total_tickets=total_tickets, top_n=top_n, per_pool_cap=5, time_weights=time_weights)
+    recommended = optimization["recommended_allocation"]
+    alternatives = optimization["alternatives"]
+    second_best = alternatives[1] if len(alternatives) > 1 else None
+    explanation = build_strategy_explanation(candidate_pools, recommended, second_best)
+
+    recommended_vector = recommended["allocation_vector"] if recommended else [0] * len(candidate_pools)
+    candidate_rows = []
+    for pool, recommended_tickets in zip(candidate_pools, recommended_vector):
+        row = dict(pool)
+        row["recommended_tickets"] = recommended_tickets
+        row["recommended_win_probability"] = round(
+            float((pool.get("predictive_win_probability_by_tickets") or {}).get(str(recommended_tickets), 0)),
+            1,
+        ) if recommended_tickets > 0 else 0.0
+        candidate_rows.append(row)
+
+    return {
+        "available_tickets": total_tickets,
+        "per_pool_cap": 5,
+        "candidate_pools": candidate_rows,
+        "recommended_allocation": recommended,
+        "alternatives": alternatives,
+        "explanation": explanation,
+    }
 
 
 def init_db():
@@ -1120,7 +2251,6 @@ def ping():
     # Keep the response tiny for uptime checks and cron jobs.
     return "ok", 200, {"Content-Type": "text/plain; charset=utf-8"}
 
-
 @app.route("/api/register", methods=["POST"])
 def register():
     data = request.json or {}
@@ -1129,18 +2259,18 @@ def register():
     role = data.get("role")
 
     if not username or not password or not role:
-        return jsonify({"error": "缺少必要資料"}), 400
+        return jsonify({"error": "missing username, password, or role"}), 400
 
     hashed_pw = generate_password_hash(password)
 
     existing = sb_select_one("users", columns="id", filters=[("eq", "username", username)])
     if existing:
-        return jsonify({"error": "此姓名已被註冊。"}), 400
+        return jsonify({"error": "user already exists"}), 400
     sb_insert("users", {"username": username, "password": hashed_pw, "role": role})
     return jsonify(
         {
             "status": "success",
-            "message": "註冊成功，請等待隊長審核。",
+            "message": "registration submitted; awaiting approval",
         }
     )
 
@@ -1153,19 +2283,19 @@ def login():
 
     user = sb_select_one("users", columns="password, role, status", filters=[("eq", "username", username)])
     if not user:
-        return jsonify({"error": "找不到此使用者。"}), 404
+        return jsonify({"error": "user not found"}), 404
 
     db_password = user["password"]
     role = user["role"]
     status = user["status"]
 
     if not check_password_hash(db_password, password):
-        return jsonify({"error": "密碼錯誤。"}), 401
+        return jsonify({"error": "invalid password"}), 401
 
     if status == "pending":
-        return jsonify({"error": "帳號尚待隊長審核。"}), 403
+        return jsonify({"error": "account approval pending"}), 403
     if status == "rejected":
-        return jsonify({"error": "帳號申請已被拒絕。"}), 403
+        return jsonify({"error": "account request rejected"}), 403
 
     return jsonify({"status": "success", "role": role, "username": username})
 
@@ -1177,7 +2307,7 @@ def change_password():
     new_password = data.get('new_password')
 
     if not username or not old_password or not new_password:
-        return jsonify({"error": "缺少必要欄位。"}), 400
+        return jsonify({"error": "missing password fields"}), 400
 
     user = sb_select_one("users", columns="password", filters=[("eq", "username", username)])
     if not user:
@@ -1185,11 +2315,11 @@ def change_password():
 
     db_password = user["password"]
     if not check_password_hash(db_password, old_password):
-        return jsonify({"error": "目前密碼錯誤。"}), 401
+        return jsonify({"error": "old password is incorrect"}), 401
 
     hashed_new_password = generate_password_hash(new_password)
     sb_update("users", {"password": hashed_new_password}, [("eq", "username", username)])
-    return jsonify({"message": "密碼更新成功。"}), 200
+    return jsonify({"message": "password updated successfully"}), 200
 
 @app.route("/api/pending_users", methods=["GET"])
 def get_pending_users():
@@ -1251,7 +2381,7 @@ def delete_user():
 @app.route('/api/announcements', methods=['GET', 'POST'])
 def handle_announcements():
     if request.method == 'GET':
-        default_content = "(還沒有人有話要說)"
+        default_content = "(Edit announcements here)"
         content = get_system_data_json("announcements", default_content)
         return jsonify({"content": content})
 
@@ -1264,11 +2394,11 @@ def handle_announcements():
 @app.route('/api/footer', methods=['GET', 'POST'])
 def handle_footer():
     default_footer_data = {
-        'captainText': '隊長',
+        'captainText': 'Captain',
         'captainLink': '#',
-        'viceText': '副隊長',
+        'viceText': 'Vice Captain',
         'viceLink': '#',
-        'igText': '球隊 IG',
+        'igText': 'Follow IG',
         'igLink': '#'
     }
     
@@ -1281,13 +2411,6 @@ def handle_footer():
         set_system_data_json("footer_data", new_data)
         return jsonify({"status": "success"}), 200
     
-@app.route("/get_videos", methods=["GET"])
-def get_videos():
-    records = sb_select("videos", columns="url, title", order_by="id", desc=True)
-    videos = [{"url": row["url"], "title": row.get("title") or ""} for row in records]
-    return jsonify(videos)
-
-
 def ensure_default_video_section():
     row = sb_select_one("video_sections", columns="id", filters=[("eq", "title", "Imported Videos")])
     if row:
@@ -1395,7 +2518,7 @@ def add_video_api():
     section_id = data.get("section_id")
     youtube_resource = parse_youtube_resource(video_url)
     if not youtube_resource or not section_id:
-        return jsonify({"status": "error", "error": "請輸入有效的 YouTube 影片或播放清單連結。"}), 400
+        return jsonify({"status": "error", "error": "Please provide a valid YouTube link and section."}), 400
 
     sb_insert("videos", {"url": youtube_resource["url"], "title": video_title, "section_id": section_id})
     return jsonify({"status": "success", "kind": youtube_resource["kind"]})
@@ -1635,6 +2758,8 @@ def get_court_status(month_id):
         if scope != "court":
             deleted = bool(sb_delete("lottery_bids", [("eq", "month_id", requested_month)])) or deleted
             deleted = bool(sb_delete("lottery_bids_history", [("eq", "month_id", requested_month)])) or deleted
+        if deleted:
+            bump_lottery_analysis_version()
         return jsonify({"status": "success", "month_id": requested_month, "deleted": deleted, "scope": scope})
 
     row = sb_select_one("court_status", columns="content", filters=[("eq", "month_id", requested_month)])
@@ -1649,12 +2774,6 @@ def get_court_status(month_id):
     )
 
 
-@app.route("/api/court_status/months", methods=["GET"])
-def list_court_status_months():
-    months = [normalize_month_id(row.get("month_id")) for row in sb_select("court_status", columns="month_id", order_by="month_id", desc=True)]
-    return jsonify({"months": [month for month in months if month]})
-
-
 @app.route("/api/court_status", methods=["POST"])
 def save_court_status():
     data = request.json or {}
@@ -1666,19 +2785,9 @@ def save_court_status():
 
     sb_upsert("court_status", {"month_id": target_month, "content": content}, on_conflict="month_id")
     archive_court_status(target_month, content, source="manual")
+    bump_lottery_analysis_version()
 
     return jsonify({"status": "success", "month_id": target_month})
-
-
-@app.route("/api/court_status/history/<month_id>", methods=["GET"])
-def get_court_status_history(month_id):
-    target_month = normalize_month_id(month_id)
-    if not target_month:
-        return jsonify({"error": "Invalid month_id"}), 400
-
-    rows = sb_select("court_status_history", columns="id, source, created_at", filters=[("eq", "month_id", target_month)], order_by="created_at", desc=True)
-    history = [{"id": row["id"], "source": row.get("source"), "created_at": row.get("created_at")} for row in rows]
-    return jsonify({"month_id": target_month, "history": history})
 
 
 @app.route("/api/lottery_bids/<month_id>", methods=["GET", "DELETE"])
@@ -1690,6 +2799,8 @@ def get_lottery_bids(month_id):
     if request.method == "DELETE":
         deleted = bool(sb_delete("lottery_bids", [("eq", "month_id", target_month)]))
         deleted = bool(sb_delete("lottery_bids_history", [("eq", "month_id", target_month)])) or deleted
+        if deleted:
+            bump_lottery_analysis_version()
         return jsonify({"status": "success", "month_id": target_month, "deleted": deleted})
 
     content = fetch_month_content("lottery_bids", target_month)
@@ -1711,6 +2822,7 @@ def save_lottery_bids():
 
     sb_upsert("lottery_bids", {"month_id": target_month, "content": normalized_content}, on_conflict="month_id")
     sb_insert("lottery_bids_history", {"month_id": target_month, "content": normalized_content, "source": "manual"})
+    bump_lottery_analysis_version()
 
     return jsonify({"status": "success", "month_id": target_month})
 
@@ -1718,31 +2830,10 @@ def save_lottery_bids():
 @app.route("/api/lottery_bids_summary", methods=["GET"])
 def get_lottery_bids_summary():
     try:
-        summary = []
-        month_ids = sorted(
-            set(fetch_existing_month_ids("lottery_bids")) | set(fetch_existing_month_ids("court_status")),
-            reverse=True,
-        )
-        for month_id in month_ids:
-            bid_content = fetch_month_content("lottery_bids", month_id)
-            court_content = fetch_month_content("court_status", month_id)
-            bid_rows = build_lottery_month_rows(month_id, parse_json_array(bid_content)) if bid_content is not None else []
-            court_rows = parse_court_status_rows(court_content) if court_content is not None else []
-            has_bid_data = len(bid_rows) > 0
-            has_court_data = len(court_rows) > 0
-            summary.append(
-                {
-                    "month_id": month_id,
-                    "total_bids": count_lottery_bids(bid_rows),
-                    "has_bid_data": has_bid_data,
-                    "has_court_data": has_court_data,
-                }
-            )
-
-        return jsonify({"months": summary})
+        return jsonify(build_lottery_bids_month_summary())
     except httpx.HTTPError as error:
         print(f"Failed to build lottery bids summary: {error}")
-        return jsonify({"months": [], "error": "暫時無法讀取投籤摘要，請稍後再試。"}), 503
+        return jsonify({"months": [], "error": "Unable to load lottery history right now."}), 503
 
 
 @app.route("/api/lottery_dashboard", methods=["GET"])
@@ -1752,17 +2843,24 @@ def get_lottery_dashboard():
     target_month = normalize_month_id(request.args.get("target_month")) or get_month_id(1)
     strategy_weekday_values = request.args.getlist("strategy_weekday")
     strategy_weekdays = [int(value) for value in strategy_weekday_values if str(value).isdigit()]
+    strategy_courts = [court for court in request.args.getlist("strategy_court") if court in LOTTERY_COURTS]
     strategy_include_dates = [normalize_court_date_value(value) for value in request.args.getlist("strategy_include_date")]
     strategy_exclude_dates = [normalize_court_date_value(value) for value in request.args.getlist("strategy_exclude_date")]
     strategy_include_dates = [value for value in strategy_include_dates if value]
     strategy_exclude_dates = [value for value in strategy_exclude_dates if value]
     try:
+        strategy_ticket_budget = int(request.args.get("strategy_ticket_budget", 5))
+    except (TypeError, ValueError):
+        strategy_ticket_budget = 5
+    strategy_ticket_budget = max(strategy_ticket_budget, 0)
+    try:
         late_ratio = float(request.args.get("strategy_weight_ratio", 1.3))
     except (TypeError, ValueError):
         late_ratio = 1.3
+    late_ratio = max(0.1, late_ratio)
     strategy_time_weights = {
         "18:00-20:00": 1.0,
-        "20:00-22:00": max(0.1, late_ratio),
+        "20:00-22:00": late_ratio,
     }
 
     if not start_month:
@@ -1771,56 +2869,80 @@ def get_lottery_dashboard():
         end_month = target_month
 
     selected_month_ids = iterate_month_ids(start_month, end_month)
-    selected_records, selected_skipped = build_probability_records(selected_month_ids)
-    selected_stats = summarize_probability_records(selected_records)
+    selected_bundle = build_probability_summary_bundle(selected_month_ids)
 
     history_month_ids = sorted(set(fetch_existing_month_ids("lottery_bids")) | set(fetch_existing_month_ids("court_status")))
-    all_records, all_skipped = build_probability_records(history_month_ids)
-    all_stats = summarize_probability_records(all_records)
+    all_bundle = build_probability_summary_bundle(history_month_ids)
+    selected_has_history = bool((selected_bundle.get("summary") or {}).get("pool_summaries"))
+    selected_effective_bundle = (
+        selected_bundle
+        if selected_has_history
+        else {
+            "months_used": selected_bundle.get("months_used", []),
+            "skipped_months": selected_bundle.get("skipped_months", []),
+            "summary": build_uniform_average_probability_summary(all_bundle.get("summary")),
+        }
+    )
 
-    selected_strategy_rows = build_strategy_rows(
+    selected_strategy_plan = build_strategy_plan(
         target_month,
-        selected_stats,
-        strategy_weekdays,
-        strategy_time_weights,
-        strategy_include_dates,
-        strategy_exclude_dates,
+        selected_effective_bundle["summary"],
+        weekdays=strategy_weekdays,
+        include_dates=strategy_include_dates,
+        exclude_dates=strategy_exclude_dates,
+        courts=strategy_courts or LOTTERY_COURTS,
+        total_tickets=strategy_ticket_budget,
+        time_weights=strategy_time_weights,
     )
-    all_time_strategy_rows = build_strategy_rows(
+    all_time_strategy_plan = build_strategy_plan(
         target_month,
-        all_stats,
-        strategy_weekdays,
-        strategy_time_weights,
-        strategy_include_dates,
-        strategy_exclude_dates,
+        all_bundle["summary"],
+        weekdays=strategy_weekdays,
+        include_dates=strategy_include_dates,
+        exclude_dates=strategy_exclude_dates,
+        courts=strategy_courts or LOTTERY_COURTS,
+        total_tickets=strategy_ticket_budget,
+        time_weights=strategy_time_weights,
     )
+    account_bid_plan = build_account_bid_plan(target_month)
 
     return jsonify(
         {
             "selected": {
                 "start_month": start_month,
                 "end_month": end_month,
-                "months_used": sorted({record["month_id"] for record in selected_records}),
-                "skipped_months": selected_skipped,
-                "stats": selected_stats,
+                "months_used": selected_bundle["months_used"],
+                "skipped_months": selected_bundle["skipped_months"],
+                "used_all_history_fallback": not selected_has_history,
+                "stats": selected_effective_bundle["summary"]["pool_summaries"],
+                "pool_summaries": selected_effective_bundle["summary"]["pool_summaries"],
+                "model": {
+                    "inference": "bayesian_discrete",
+                    "selected_prior": selected_effective_bundle["summary"]["selected_model"],
+                    "candidates": selected_effective_bundle["summary"]["candidate_models"],
+                },
             },
             "all_time": {
-                "months_used": sorted({record["month_id"] for record in all_records}),
-                "skipped_months": all_skipped,
-                "stats": all_stats,
+                "months_used": all_bundle["months_used"],
+                "skipped_months": all_bundle["skipped_months"],
+                "stats": all_bundle["summary"]["pool_summaries"],
+                "pool_summaries": all_bundle["summary"]["pool_summaries"],
+                "model": {
+                    "inference": "bayesian_discrete",
+                    "selected_prior": all_bundle["summary"]["selected_model"],
+                    "candidates": all_bundle["summary"]["candidate_models"],
+                },
             },
             "strategy": {
                 "target_month": target_month,
-                "weights": {
-                    "18:00-20:00": strategy_time_weights["18:00-20:00"],
-                    "20:00-22:00": strategy_time_weights["20:00-22:00"],
-                },
+                "weights": strategy_time_weights,
+                "account_bid_plan": account_bid_plan,
                 "selected": {
-                    "rows": selected_strategy_rows,
+                    **selected_strategy_plan,
                     "source": "selected",
                 },
                 "all_time": {
-                    "rows": all_time_strategy_rows,
+                    **all_time_strategy_plan,
                     "source": "all_time",
                 },
             },
@@ -1868,7 +2990,7 @@ def create_menu_item():
 def import_menu_data():
     uploaded_file = request.files.get("file")
     if not uploaded_file or not uploaded_file.filename:
-        return jsonify({"error": "請先選擇要匯入的 CSV 檔案。"}), 400
+        return jsonify({"error": "Please upload a CSV file."}), 400
 
     replace_existing = str(request.form.get("replace", "")).strip().lower() in {"1", "true", "yes", "on"}
 
@@ -1878,7 +3000,7 @@ def import_menu_data():
         return jsonify({"error": str(error)}), 400
 
     if not rows:
-        return jsonify({"error": "上傳的 CSV 內沒有可匯入的菜單資料。"}), 400
+        return jsonify({"error": "The CSV does not contain any valid rows to import."}), 400
 
     if replace_existing:
         sb_delete("menu_drills", [("neq", "id", 0)])
@@ -1933,7 +3055,7 @@ def update_or_delete_menu_item(item_id):
         [("eq", "id", item_id)],
     )
     if not updated:
-        return jsonify({"error": "找不到這筆菜單資料"}), 404
+        return jsonify({"error": "Menu item not found."}), 404
     return jsonify({"status": "success", "item": row})
 
 
@@ -1964,122 +3086,13 @@ def practice_menu():
 def trigger_scrape():
     data = request.json or {}
     target_month = data.get("month_id")
+    return start_scrape_thread(data, target_month)
 
-    def run_scraper_task():
-        try:
-            set_scrape_status("running", "Scraper is running.", target_month or "")
-            print(f"Starting scraper for {target_month}...")
-            payload_str = json.dumps(data)
-            result = subprocess.run(
-                [sys.executable, "main.py", payload_str],
-                capture_output=True,
-                text=True,
-                cwd="drawresult",
-                errors="replace",
-                timeout=SCRAPER_SUBPROCESS_TIMEOUT_SECONDS,
-            )
-            print("Scraper finished. Output:")
-            print(result.stdout)
-            if result.stderr:
-                print("Scraper stderr:", result.stderr)
-
-            combined_output = f"{result.stdout}\n{result.stderr}".lower()
-            denied_markers = [
-                "非 json 格式",
-                "non json",
-                "non-json",
-                "doctype html",
-                "拒絕存取",
-                "access denied",
-                "forbidden",
-            ]
-            saved_content = get_saved_court_status(target_month)
-            if result.returncode != 0 or any(marker in combined_output for marker in denied_markers):
-                if saved_content:
-                    set_scrape_status(
-                        "success",
-                        "系統拒絕存取，已改用資料庫中這個月已儲存的場地資料。",
-                        target_month or "",
-                    )
-                else:
-                    set_scrape_status(
-                        "error",
-                        "系統拒絕存取。請先登入台大場地管理系統，再重新爬一次。",
-                        target_month or "",
-                    )
-            else:
-                set_scrape_status("success", "Scraper completed successfully.", target_month or "")
-        except subprocess.TimeoutExpired:
-            print(f"Scraper timed out after {SCRAPER_SUBPROCESS_TIMEOUT_SECONDS} seconds.")
-            if get_saved_court_status(target_month):
-                set_scrape_status(
-                    "success",
-                    f"爬蟲執行逾時，已保留 {target_month or '目前月份'} 的既有場單資料。",
-                    target_month or "",
-                )
-            else:
-                set_scrape_status(
-                    "error",
-                    "爬蟲執行逾時，尚未取得新的場單資料，請稍後再試。",
-                    target_month or "",
-                )
-        except Exception as e:
-            print(f"Failed to run scraper: {e}")
-            if get_saved_court_status(target_month):
-                set_scrape_status(
-                    "success",
-                    "系統拒絕存取，已改用資料庫中這個月已儲存的場地資料。",
-                    target_month or "",
-                )
-            else:
-                set_scrape_status(
-                    "error",
-                    "系統拒絕存取。請先登入台大場地管理系統，再重新爬一次。",
-                    target_month or "",
-                )
-
-    thread = threading.Thread(target=run_scraper_task)
-    thread.start()
-
-    return jsonify(
-        {
-            "status": "success",
-            "message": f"Started scraper for {target_month}. Please wait a moment and refresh later.",
-        }
-    )
 
 
 @app.route("/api/scrape_status", methods=["GET"])
 def get_scrape_status():
     return jsonify(get_system_data_json("scrape_status", {"status": "idle", "message": "", "target_month": ""}))
-
-
-@app.route("/api/probability/<month_id>", methods=["GET"])
-def get_probability(month_id):
-    row = sb_select_one("probability_stats", columns="content", filters=[("eq", "month_id", month_id)])
-    return jsonify(
-        {
-            "content": row.get("content")
-            if row
-            else "<p style='text-align:center; color:#999;'>No probability data generated for this month yet.</p>"
-        }
-    )
-
-
-@app.route("/api/scrape", methods=["POST"])
-def scrape_data():
-    return jsonify({"status": "success", "message": "Scraping task completed."})
-
-
-@app.route("/api/strategy", methods=["GET"])
-def get_strategy():
-    return jsonify(
-        {
-            "best_court": "Court 5",
-            "best_court": "場 5",
-            "suggestion": "建議把籤數集中在星期四下半場。",
-        }
-    )
 
 
 @app.route("/api/upload-photo", methods=["POST"])
@@ -2194,7 +3207,7 @@ def get_showcase_photo_assets():
     assets = []
     for filename in selected_photos:
         if not filename or not isinstance(filename, str):
-            print(f"警告：跳過無效的檔名 {filename}")
+            print(f"Skipping invalid photo filename: {filename}")
             continue
         cropped_filename = crop_map.get(filename)
         if cropped_filename:
