@@ -31,7 +31,7 @@ STATIC_ASSET_FILES = ("static/style.css", "static/script.js", "templates/index.h
 SCRAPER_SUBPROCESS_TIMEOUT_SECONDS = 90
 SUPABASE_RETRY_ATTEMPTS = 3
 SUPABASE_RETRY_DELAY_SECONDS = 0.6
-LOTTERY_ANALYSIS_VERSION_KEY = "lottery_analysis_version_v1"
+LOTTERY_ANALYSIS_VERSION_KEY = "lottery_analysis_version_v2"
 LOTTERY_ANALYSIS_CACHE_PREFIX = "lottery_analysis_cache_v3"
 LOTTERY_MONTH_SUMMARY_CACHE_PREFIX = "lottery_month_summary_cache_v1"
 LOTTERY_ANALYSIS_MEMORY_CACHE = {}
@@ -1351,6 +1351,14 @@ def expected_information_gain(history, prior, bids):
     return posterior_entropy(base_posterior) - ((win_probability * win_entropy) + (lose_probability * lose_entropy))
 
 
+def relative_information_gain_percent(history, prior, bids):
+    base_posterior = compute_pool_posterior(history, prior)
+    base_entropy = posterior_entropy(base_posterior)
+    if base_entropy <= 1e-9:
+        return 0.0
+    return (expected_information_gain(history, prior, bids) / base_entropy) * 100.0
+
+
 def score_prior_model(pool_histories, prior):
     score = 0.0
     for item in pool_histories.values():
@@ -1388,6 +1396,7 @@ def summarize_probability_records(records):
         total_wins = sum(record["wins"] for record in item["records"])
         posterior = compute_pool_posterior(item["records"], selected_prior)
         mean_base_tickets = posterior_mean(posterior)
+        base_entropy = posterior_entropy(posterior)
         pool_summary = {
             "weekday": item["weekday"],
             "time": item["time"],
@@ -1403,6 +1412,7 @@ def summarize_probability_records(records):
             "posterior_stddev": round(posterior_stddev(posterior), 2),
             "posterior_map_base_tickets": posterior_map(posterior),
             "credible_interval": posterior_credible_interval(posterior),
+            "posterior_entropy": round(base_entropy, 4),
             "ticket_probability": round(predictive_win_probability_from_posterior(posterior, 1) * 100, 1),
             "predictive_win_probability_by_tickets": {
                 str(bids): round(predictive_win_probability_from_posterior(posterior, bids) * 100, 1)
@@ -1410,6 +1420,10 @@ def summarize_probability_records(records):
             },
             "expected_information_gain_by_tickets": {
                 str(bids): round(expected_information_gain(item["records"], selected_prior, bids), 4)
+                for bids in range(1, 6)
+            },
+            "relative_information_gain_percent_by_tickets": {
+                str(bids): round(relative_information_gain_percent(item["records"], selected_prior, bids), 3)
                 for bids in range(1, 6)
             },
             "history": [
@@ -1476,8 +1490,10 @@ def build_uniform_average_probability_summary(probability_summary):
     total_bids = int(round(sum(float(item.get("total_bids") or 0) for item in source_items) / len(source_items)))
     total_wins = int(round(sum(float(item.get("total_wins") or 0) for item in source_items) / len(source_items)))
     attempts = int(round(sum(float(item.get("attempts") or 0) for item in source_items) / len(source_items)))
+    posterior_entropy = round(sum(float(item.get("posterior_entropy") or 0) for item in source_items) / len(source_items), 4)
     predictive = {}
     info_gain = {}
+    relative_info_gain = {}
     for key in predictive_keys:
         predictive[key] = round(
             sum(float((item.get("predictive_win_probability_by_tickets") or {}).get(key, 0)) for item in source_items) / len(source_items),
@@ -1487,6 +1503,10 @@ def build_uniform_average_probability_summary(probability_summary):
             sum(float((item.get("expected_information_gain_by_tickets") or {}).get(key, 0)) for item in source_items) / len(source_items),
             4,
         )
+        relative_info_gain[key] = round(
+            sum(float((item.get("relative_information_gain_percent_by_tickets") or {}).get(key, 0)) for item in source_items) / len(source_items),
+            3,
+        )
     interval_lows = [int((item.get("credible_interval") or {}).get("low", 0)) for item in source_items]
     interval_highs = [int((item.get("credible_interval") or {}).get("high", 0)) for item in source_items]
     averaged_item = {
@@ -1495,9 +1515,11 @@ def build_uniform_average_probability_summary(probability_summary):
         "credible_interval": {"low": min(interval_lows), "high": max(interval_highs), "mass": 0.8},
         "predictive_win_probability_by_tickets": predictive,
         "expected_information_gain_by_tickets": info_gain,
+        "relative_information_gain_percent_by_tickets": relative_info_gain,
         "total_bids": total_bids,
         "total_wins": total_wins,
         "attempts": attempts,
+        "posterior_entropy": posterior_entropy,
         "win_rate": round((total_wins / attempts * 100) if attempts else 0, 1),
         "ticket_rate": round((total_wins / total_bids * 100) if total_bids else 0, 1),
         "avg_bids": round((total_bids / attempts) if attempts else 0, 1),
@@ -1704,21 +1726,27 @@ def build_candidate_pools(target_month, probability_summary, weekdays=None, incl
         total_bids = int(round(sum(float(entry.get("total_bids") or 0) for entry in items) / len(items)))
         total_wins = int(round(sum(float(entry.get("total_wins") or 0) for entry in items) / len(items)))
         attempts = int(round(sum(float(entry.get("attempts") or 0) for entry in items) / len(items)))
+        posterior_entropy = round(sum(float(entry.get("posterior_entropy") or 0) for entry in items) / len(items), 4)
         predictive = {}
         info_gain = {}
+        relative_info_gain = {}
         for key in predictive_keys:
             values = [float((entry.get("predictive_win_probability_by_tickets") or {}).get(key, 0)) for entry in items]
             predictive[key] = round(sum(values) / len(values), 1)
             gain_values = [float((entry.get("expected_information_gain_by_tickets") or {}).get(key, 0)) for entry in items]
             info_gain[key] = round(sum(gain_values) / len(gain_values), 4)
+            relative_gain_values = [float((entry.get("relative_information_gain_percent_by_tickets") or {}).get(key, 0)) for entry in items]
+            relative_info_gain[key] = round(sum(relative_gain_values) / len(relative_gain_values), 3)
         lows = [int((entry.get("credible_interval") or {}).get("low", 0)) for entry in items]
         highs = [int((entry.get("credible_interval") or {}).get("high", 0)) for entry in items]
         return {
             "posterior_mean_base_tickets": mean_base,
             "posterior_stddev": stddev,
             "credible_interval": {"low": min(lows), "high": max(highs), "mass": 0.8},
+            "posterior_entropy": posterior_entropy,
             "predictive_win_probability_by_tickets": predictive,
             "expected_information_gain_by_tickets": info_gain,
+            "relative_information_gain_percent_by_tickets": relative_info_gain,
             "total_bids": total_bids,
             "total_wins": total_wins,
             "attempts": attempts,
@@ -1736,8 +1764,10 @@ def build_candidate_pools(target_month, probability_summary, weekdays=None, incl
             "posterior_mean_base_tickets": summary["posterior_mean_base_tickets"],
             "posterior_stddev": summary["posterior_stddev"],
             "credible_interval": summary["credible_interval"],
+            "posterior_entropy": summary.get("posterior_entropy", 0),
             "predictive_win_probability_by_tickets": summary["predictive_win_probability_by_tickets"],
             "expected_information_gain_by_tickets": summary["expected_information_gain_by_tickets"],
+            "relative_information_gain_percent_by_tickets": summary.get("relative_information_gain_percent_by_tickets", {}),
             "total_bids": summary["total_bids"],
             "total_wins": summary["total_wins"],
             "attempts": summary["attempts"],

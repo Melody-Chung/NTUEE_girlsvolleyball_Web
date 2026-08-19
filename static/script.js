@@ -5024,6 +5024,63 @@ let activeStrategyTab = 'selected';
 let lotterySelectedMonthId = getMonthData(0).id;
 let lotteryDashboardAbortController = null;
 let latestLotteryDashboardData = null;
+const strategyPlanDrafts = {
+    selected: null,
+    all: null,
+};
+
+function cloneJson(value) {
+    return value ? JSON.parse(JSON.stringify(value)) : null;
+}
+
+function getStrategyDraftKey(tabKey = activeStrategyTab) {
+    return tabKey === 'all' ? 'all' : 'selected';
+}
+
+function createStrategyPoolKey(pool) {
+    return String(pool?.pool_id || `${pool?.date || ''}|${pool?.time || ''}|${pool?.court || ''}`);
+}
+
+function getPoolPredictiveWinProbability(pool, tickets) {
+    const normalizedTickets = Math.max(0, Math.min(5, Number.parseInt(tickets, 10) || 0));
+    if (normalizedTickets <= 0) return 0;
+    const predictiveMap = pool?.predictive_win_probability_by_tickets || {};
+    return Number(predictiveMap[String(normalizedTickets)] || 0);
+}
+
+function initializeStrategyPlanDrafts() {
+    strategyPlanDrafts.selected = cloneJson(latestLotteryDashboardData?.strategy?.selected);
+    strategyPlanDrafts.all = cloneJson(latestLotteryDashboardData?.strategy?.all_time);
+}
+
+function getStrategyPlanDraft(tabKey = activeStrategyTab) {
+    return strategyPlanDrafts[getStrategyDraftKey(tabKey)];
+}
+
+function renderStrategyPanelByTab(tabKey = activeStrategyTab) {
+    const normalizedTabKey = getStrategyDraftKey(tabKey);
+    const panelId = normalizedTabKey === 'all' ? 'strategy-all-panel' : 'strategy-selected-panel';
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+
+    const summaryLabel = normalizedTabKey === 'all'
+        ? `目標月份：${latestLotteryDashboardData?.strategy?.target_month || getMonthData(1).id} ｜ 全部歷史：${(latestLotteryDashboardData?.all_time?.months_used || []).join(', ') || '無'}`
+        : `目標月份：${latestLotteryDashboardData?.strategy?.target_month || getMonthData(1).id} ｜ 所選區間：${(latestLotteryDashboardData?.selected?.months_used || []).join(', ') || '無'}`;
+    panel.innerHTML = renderStrategyTable(getStrategyPlanDraft(normalizedTabKey), summaryLabel, normalizedTabKey);
+}
+
+function updateStrategyRecommendedTickets(tabKey, poolKey, value) {
+    const plan = getStrategyPlanDraft(tabKey);
+    if (!plan || !Array.isArray(plan.candidate_pools)) return;
+    const pool = plan.candidate_pools.find((item) => createStrategyPoolKey(item) === String(poolKey));
+    if (!pool) return;
+
+    const nextTickets = Math.max(0, Math.min(5, Number.parseInt(value, 10) || 0));
+    pool.recommended_tickets = nextTickets;
+    pool.recommended_win_probability = Math.round(getPoolPredictiveWinProbability(pool, nextTickets) * 10) / 10;
+
+    renderStrategyPanelByTab(tabKey);
+}
 
 function initCheckboxFilter(selector, storageKey, defaultValues, valueGetter, onChange) {
     const checkboxes = document.querySelectorAll(selector);
@@ -5313,9 +5370,7 @@ function buildRowsFromStrategyPlan(strategyPlan, monthId) {
 
 function importStrategyToAccountPlan() {
     const monthId = latestLotteryDashboardData?.strategy?.target_month || getMonthData(1).id;
-    const strategyPlan = activeStrategyTab === 'all'
-        ? latestLotteryDashboardData?.strategy?.all_time
-        : latestLotteryDashboardData?.strategy?.selected;
+    const strategyPlan = getStrategyPlanDraft(activeStrategyTab);
     if (!strategyPlan || !Array.isArray(strategyPlan.candidate_pools)) {
         alert('目前還沒有可帶入的策略分析結果。');
         return;
@@ -5331,6 +5386,7 @@ function buildAccountAssignmentsFromRows(rows) {
         ticketsUsed: 0,
         assignments: [],
         slotCounts: {},
+        courtCounts: {},
     }));
     const requests = [];
     (rows || []).forEach((row) => {
@@ -5359,13 +5415,20 @@ function buildAccountAssignmentsFromRows(rows) {
 
     requests.forEach((request) => {
         const slotKey = `${request.date}|${request.time}`;
+        const courtKey = request.court;
         const eligible = accountState
             .filter((account) => account.ticketsUsed < 10)
-            .sort((a, b) => a.ticketsUsed - b.ticketsUsed || (a.slotCounts[slotKey] || 0) - (b.slotCounts[slotKey] || 0) || a.account.localeCompare(b.account));
+            .sort((a, b) =>
+                (b.courtCounts[courtKey] || 0) - (a.courtCounts[courtKey] || 0)
+                || (a.slotCounts[slotKey] || 0) - (b.slotCounts[slotKey] || 0)
+                || a.ticketsUsed - b.ticketsUsed
+                || a.account.localeCompare(b.account)
+            );
         const assigned = eligible.slice(0, request.tickets);
         assigned.forEach((account) => {
             account.ticketsUsed += 1;
             account.slotCounts[slotKey] = (account.slotCounts[slotKey] || 0) + 1;
+            account.courtCounts[courtKey] = (account.courtCounts[courtKey] || 0) + 1;
             account.assignments.push({
                 date: request.date,
                 weekday: request.weekday,
@@ -5885,11 +5948,88 @@ function renderStrategyMetricChip(label, value, modifier) {
     return `<span class="strategy-metric-chip strategy-metric-chip--${modifier}"><strong>${label}</strong> ${escapeHtml(String(value))}</span>`;
 }
 
-function renderStrategyPoolMatrix(candidatePools) {
+function renderStrategyRecommendedEditor(pool, tabKey) {
+    const selectedValue = Math.max(0, Math.min(5, Number.parseInt(pool?.recommended_tickets || 0, 10) || 0));
+    const poolKey = createStrategyPoolKey(pool);
+    return `
+        <span class="strategy-metric-chip strategy-metric-chip--recommended strategy-metric-chip--editable">
+            <strong>Rec</strong>
+            <select class="strategy-rec-select" onchange="updateStrategyRecommendedTickets('${escapeHtml(tabKey)}', '${escapeHtml(poolKey)}', this.value)">
+                ${[0, 1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${selectedValue === value ? 'selected' : ''}>${value}</option>`).join('')}
+            </select>
+        </span>
+    `;
+}
+
+function buildStrategyInfoDisplayMap(candidatePools) {
+    const scoredPools = (candidatePools || [])
+        .map((pool) => {
+            const tickets = Math.max(0, Math.min(5, Number.parseInt(pool?.recommended_tickets || 0, 10) || 0));
+            if (tickets <= 0) return null;
+            const relativePercent = Number((pool?.relative_information_gain_percent_by_tickets || {})[String(tickets)]);
+            const fallbackRaw = Number((pool?.expected_information_gain_by_tickets || {})[String(tickets)]);
+            const rawValue = Number.isFinite(relativePercent) && relativePercent > 0
+                ? relativePercent
+                : (Number.isFinite(fallbackRaw) && fallbackRaw > 0 ? fallbackRaw : 0);
+            return {
+                poolKey: createStrategyPoolKey(pool),
+                rawValue,
+            };
+        })
+        .filter(Boolean);
+
+    const positiveValues = scoredPools
+        .map((item) => item.rawValue)
+        .filter((value) => Number.isFinite(value) && value > 0);
+
+    const displayMap = new Map();
+    const minPositive = positiveValues.length > 0 ? Math.min(...positiveValues) : 0;
+    const maxPositive = positiveValues.length > 0 ? Math.max(...positiveValues) : 0;
+    const hasSpread = maxPositive > minPositive;
+
+    (candidatePools || []).forEach((pool) => {
+        const tickets = Math.max(0, Math.min(5, Number.parseInt(pool?.recommended_tickets || 0, 10) || 0));
+        if (tickets <= 0) {
+            displayMap.set(createStrategyPoolKey(pool), '-');
+            return;
+        }
+        const scored = scoredPools.find((item) => item.poolKey === createStrategyPoolKey(pool));
+        const rawValue = scored ? scored.rawValue : 0;
+        let normalizedScore = 1;
+        if (positiveValues.length === 0) {
+            normalizedScore = 1;
+        } else if (rawValue <= 0) {
+            normalizedScore = 1;
+        } else if (!hasSpread) {
+            normalizedScore = 100;
+        } else {
+            normalizedScore = Math.round(1 + (((rawValue - minPositive) / (maxPositive - minPositive)) * 99));
+        }
+        displayMap.set(createStrategyPoolKey(pool), `${Math.max(1, Math.min(100, normalizedScore))}%`);
+    });
+
+    return displayMap;
+}
+
+function getStrategyManualAllocationSummary(candidatePools) {
+    const totalTickets = (candidatePools || []).reduce(
+        (sum, pool) => sum + Math.max(0, Math.min(5, Number.parseInt(pool?.recommended_tickets || 0, 10) || 0)),
+        0
+    );
+    const budget = getStrategyTicketBudget();
+    return {
+        totalTickets,
+        budget,
+        isOverBudget: totalTickets > budget,
+    };
+}
+
+function renderStrategyPoolMatrix(candidatePools, tabKey) {
     if (!Array.isArray(candidatePools) || candidatePools.length === 0) {
         return '<p style="text-align:center; color:#999; padding: 20px;">沒有符合條件的 pool。</p>';
     }
 
+    const infoDisplayMap = buildStrategyInfoDisplayMap(candidatePools);
     const grouped = new Map();
     candidatePools.forEach((pool) => {
         const rowKey = `${pool.date}|${pool.time}`;
@@ -5929,8 +6069,7 @@ function renderStrategyPoolMatrix(candidatePools) {
                 }
                 const recommendedTickets = pool.recommended_tickets || 0;
                 const predictive = recommendedTickets > 0 ? `${pool.recommended_win_probability}%` : '0%';
-                const infoGainMap = pool.expected_information_gain_by_tickets || {};
-                const infoGain = recommendedTickets > 0 ? (infoGainMap[String(recommendedTickets)] ?? '-') : '-';
+                const infoGain = infoDisplayMap.get(createStrategyPoolKey(pool)) ?? '-';
                 const fallbackNote = pool.fallback_source && pool.fallback_source !== 'exact'
                     ? '<div class="strategy-fallback-note">fallback</div>'
                     : '';
@@ -5938,7 +6077,7 @@ function renderStrategyPoolMatrix(candidatePools) {
                     <td>
                         <div class="strategy-pool-cell">
                             ${renderStrategyMetricChip('Base', `${pool.posterior_mean_base_tickets} ± ${pool.posterior_stddev}`, 'base')}
-                            ${renderStrategyMetricChip('Rec', recommendedTickets, 'recommended')}
+                            ${renderStrategyRecommendedEditor(pool, tabKey)}
                             ${renderStrategyMetricChip('Predict', predictive, 'predictive')}
                             ${renderStrategyMetricChip('Info', infoGain, 'info')}
                             ${fallbackNote}
@@ -5953,23 +6092,22 @@ function renderStrategyPoolMatrix(candidatePools) {
     return html;
 }
 
-function renderStrategyPoolTable(candidatePools) {
+function renderStrategyPoolTable(candidatePools, tabKey) {
     if (!Array.isArray(candidatePools) || candidatePools.length === 0) {
         return '<p style="text-align:center; color:#999; padding: 20px;">沒有符合條件的 pool。</p>';
     }
 
+    const infoDisplayMap = buildStrategyInfoDisplayMap(candidatePools);
     let html = '<div class="court-dashboard-container"><div class="probability-matrix"><table class="court-table probability-table"><thead><tr><th>Pool</th><th>Estimated Base</th><th>Recommended</th><th>Predictive</th><th>Info Gain</th></tr></thead><tbody>';
     candidatePools.forEach((pool) => {
-        const predictiveMap = pool.predictive_win_probability_by_tickets || {};
-        const infoGainMap = pool.expected_information_gain_by_tickets || {};
         const recommendedTickets = pool.recommended_tickets || 0;
         const predictive = recommendedTickets > 0 ? `${pool.recommended_win_probability}%` : '-';
-        const infoGain = recommendedTickets > 0 ? (infoGainMap[String(recommendedTickets)] ?? '-') : '-';
+        const infoGain = infoDisplayMap.get(createStrategyPoolKey(pool)) ?? '-';
         html += `
             <tr>
                 <td><strong>${escapeHtml(pool.date)} (${escapeHtml(pool.weekday)})</strong><br>${escapeHtml(pool.time)} · ${escapeHtml(pool.court.replace('Court ', '場 '))}${pool.fallback_source && pool.fallback_source !== 'exact' ? '<br><small>fallback</small>' : ''}</td>
                 <td>${pool.posterior_mean_base_tickets} ± ${pool.posterior_stddev}</td>
-                <td><strong>${recommendedTickets}</strong></td>
+                <td>${renderStrategyRecommendedEditor(pool, tabKey)}</td>
                 <td>${predictive}</td>
                 <td>${infoGain}</td>
             </tr>
@@ -5979,13 +6117,24 @@ function renderStrategyPoolTable(candidatePools) {
     return html;
 }
 
-function renderStrategyTable(plan, summaryLabel) {
+function renderStrategyTable(plan, summaryLabel, tabKey = activeStrategyTab) {
     if (!plan || !Array.isArray(plan.candidate_pools) || plan.candidate_pools.length === 0) {
         return '<p style="text-align:center; color:#999; padding: 20px;">資料不足，無法產生策略建議。</p>';
     }
 
+    const allocationSummary = getStrategyManualAllocationSummary(plan.candidate_pools);
+    const usageClass = allocationSummary.isOverBudget
+        ? 'strategy-manual-usage strategy-manual-usage--over'
+        : 'strategy-manual-usage';
     let html = `<div class="strategy-note">${escapeHtml(summaryLabel)}</div>`;
-    html += renderStrategyPoolMatrix(plan.candidate_pools);
+    html += `
+        <div class="${usageClass}">
+            目前手動調整後總共用了 <strong>${allocationSummary.totalTickets}</strong> 張籤
+            ／ 上限 <strong>${allocationSummary.budget}</strong> 張
+            ${allocationSummary.isOverBudget ? '／ 已超過上限，請調整 Rec' : ''}
+        </div>
+    `;
+    html += renderStrategyPoolMatrix(plan.candidate_pools, getStrategyDraftKey(tabKey));
     return html;
 }
 
@@ -6060,12 +6209,26 @@ function renderIndependentAccountPlanSection() {
         ${renderAccountPlanEditorTable(monthId, visibleRows)}
     `;
 
-    html += '<div class="court-dashboard-container"><div class="strategy-note">帳號分配結果</div><div class="probability-matrix"><table class="court-table probability-table"><thead><tr><th>帳號</th><th>已用</th><th>投籤位置</th></tr></thead><tbody>';
+    html += '<div class="court-dashboard-container"><div class="probability-matrix"><table class="court-table probability-table account-plan-table"><thead><tr><th>帳號</th><th>已用</th><th>投籤位置</th></tr></thead><tbody>';
     assignmentPlan.accounts.forEach((account) => {
         const assignments = account.assignments.length > 0
-            ? account.assignments.map((item) => `${item.date} (${item.weekday}) ${item.time} ${item.court.replace('Court ', '場 ')}`).join('<br>')
+            ? `<div class="account-assignment-list">${account.assignments.map((item) => `
+                <div class="account-assignment-item account-assignment-item--${escapeHtml(item.court.toLowerCase().replace(/\s+/g, '-'))}">
+                    <div class="account-assignment-main">
+                        <span class="account-assignment-date">${escapeHtml(item.date)} (${escapeHtml(item.weekday)})</span>
+                        <span class="account-assignment-time">${escapeHtml(item.time)}</span>
+                    </div>
+                    <span class="account-assignment-court account-assignment-court--${escapeHtml(item.court.toLowerCase().replace(/\s+/g, '-'))}">${escapeHtml(item.court.replace('Court ', '場 '))}</span>
+                </div>
+            `).join('')}</div>`
             : '<span class="missing-data-text">未分配</span>';
-        html += `<tr><td><strong>${escapeHtml(account.account)}</strong></td><td>${account.ticketsUsed} / 10</td><td>${assignments}</td></tr>`;
+        html += `
+            <tr>
+                <td class="account-plan-table__account"><span class="account-plan-account-name">${escapeHtml(account.account)}</span></td>
+                <td class="account-plan-table__usage"><span class="account-plan-usage-pill">${account.ticketsUsed} / 10</span></td>
+                <td class="account-plan-table__assignments">${assignments}</td>
+            </tr>
+        `;
     });
     html += '</tbody></table></div></div>';
 
@@ -6168,6 +6331,7 @@ async function loadLotteryDashboard() {
             throw new Error(data?.error || `HTTP ${response.status}`);
         }
         latestLotteryDashboardData = data;
+        initializeStrategyPlanDrafts();
         const summary = document.getElementById('probability-summary');
 
         if (selectedPanel) selectedPanel.innerHTML = renderProbabilityMatrix(data.selected.pool_summaries, '所選月份區間內沒有可用的對應資料。', probabilityWeekdays, probabilityCourts, data.selected.model);
@@ -6185,8 +6349,8 @@ async function loadLotteryDashboard() {
         const strategyTargetMonth = data?.strategy?.target_month || targetMonth;
         const selectedStrategySummary = `目標月份：${strategyTargetMonth} ｜ 所選區間：${(data.selected.months_used || []).join(', ') || '無'}`;
         const allHistoryStrategySummary = `目標月份：${strategyTargetMonth} ｜ 全部歷史：${(data.all_time.months_used || []).join(', ') || '無'}`;
-        if (strategySelectedPanel) strategySelectedPanel.innerHTML = renderStrategyTable(data.strategy.selected, selectedStrategySummary);
-        if (strategyAllPanel) strategyAllPanel.innerHTML = renderStrategyTable(data.strategy.all_time, allHistoryStrategySummary);
+        if (strategySelectedPanel) strategySelectedPanel.innerHTML = renderStrategyTable(getStrategyPlanDraft('selected'), selectedStrategySummary, 'selected');
+        if (strategyAllPanel) strategyAllPanel.innerHTML = renderStrategyTable(getStrategyPlanDraft('all'), allHistoryStrategySummary, 'all');
         renderIndependentAccountPlanSection();
 
         switchProbabilityTab(sessionStorage.getItem('vbt_probability_tab') || activeProbabilityTab);
