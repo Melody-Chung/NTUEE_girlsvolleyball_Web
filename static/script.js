@@ -4365,11 +4365,46 @@ function normalizeCourtSlot(slotData) {
     return { line1, line2, color };
 }
 
+function normalizeCourtSlotList(slotData) {
+    if (!slotData) return [];
+    const normalizedItems = Array.isArray(slotData)
+        ? slotData.map((item) => normalizeCourtSlot(item)).filter(Boolean)
+        : [normalizeCourtSlot(slotData)].filter(Boolean);
+    const seen = new Set();
+    return normalizedItems.filter((item) => {
+        const key = `${item.line1}|${item.line2}|${item.color}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
+function getEditableCourtSlotList(slotData) {
+    if (!slotData) return [];
+    const rawItems = Array.isArray(slotData) ? slotData : [slotData];
+    const seen = new Set();
+    const normalizedItems = [];
+
+    rawItems.forEach((item) => {
+        const normalized = normalizeCourtSlot(item) || {
+            line1: String(item?.line1 ?? item?.court ?? '').trim(),
+            line2: String(item?.line2 ?? item?.dept ?? '').trim(),
+            color: item?.color === 'blue' ? 'blue' : item?.color === 'yellow' ? 'yellow' : 'none'
+        };
+        const key = `${normalized.line1}|${normalized.line2}|${normalized.color}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        normalizedItems.push(normalized);
+    });
+
+    return normalizedItems;
+}
+
 function normalizeCourtRow(row) {
     return {
         date: row.date,
-        slot1: normalizeCourtSlot(row.slot1),
-        slot2: normalizeCourtSlot(row.slot2)
+        slot1: Array.isArray(row.slot1) ? normalizeCourtSlotList(row.slot1) : normalizeCourtSlot(row.slot1),
+        slot2: Array.isArray(row.slot2) ? normalizeCourtSlotList(row.slot2) : normalizeCourtSlot(row.slot2)
     };
 }
 
@@ -4450,23 +4485,40 @@ function refreshCourtTableByMonth(monthId) {
 }
 
 function getCourtCellClass(slotData) {
-    if (!slotData) return 'court-empty';
-    if (slotData.color === 'blue') return 'court-booked court-booked--blue';
-    if (slotData.color === 'yellow') return 'court-booked court-booked--yellow';
+    const slots = normalizeCourtSlotList(slotData);
+    if (slots.length === 0) {
+        const single = normalizeCourtSlot(slotData);
+        if (!single) return 'court-empty';
+        if (single.color === 'blue') return 'court-booked court-booked--blue';
+        if (single.color === 'yellow') return 'court-booked court-booked--yellow';
+        return 'court-empty';
+    }
+    if (slots.some((slot) => slot.color === 'blue')) return 'court-booked court-booked--blue';
+    if (slots.some((slot) => slot.color === 'yellow')) return 'court-booked court-booked--yellow';
     return 'court-empty';
 }
 
 function renderCourtSlotDisplay(slotData, isAuth) {
-    const normalized = normalizeCourtSlot(slotData);
-    if (!normalized) return `<td class="court-empty">-</td>`;
-
-    let content = `<div class="slot-line1">${escapeHtml(normalized.line1)}</div>`;
-    const showLine2 = isAuth && normalized.line2;
-    if (showLine2) {
-        content += `<div class="dept-name slot-line2">${escapeHtml(normalized.line2)}</div>`;
+    const normalizedList = normalizeCourtSlotList(slotData);
+    if (normalizedList.length === 0) {
+        const normalized = normalizeCourtSlot(slotData);
+        if (!normalized) return `<td class="court-empty">-</td>`;
+        let content = `<div class="slot-line1">${escapeHtml(normalized.line1)}</div>`;
+        if (isAuth && normalized.line2) {
+            content += `<div class="dept-name slot-line2">${escapeHtml(normalized.line2)}</div>`;
+        }
+        return `<td class="${getCourtCellClass(normalized)}">${content}</td>`;
     }
 
-    return `<td class="${getCourtCellClass(normalized)}">${content}</td>`;
+    const content = normalizedList.map((normalized) => {
+        let block = `<div class="slot-line1">${escapeHtml(normalized.line1)}</div>`;
+        if (isAuth && normalized.line2) {
+            block += `<div class="dept-name slot-line2">${escapeHtml(normalized.line2)}</div>`;
+        }
+        return `<div class="court-slot-entry">${block}</div>`;
+    }).join('');
+
+    return `<td class="${getCourtCellClass(normalizedList)}">${content}</td>`;
 }
 
 async function loadCourtStatus() {
@@ -4557,7 +4609,7 @@ function transformCourtData(rawData) {
         if (!d) return;
 
         if (!grouped[d]) {
-            grouped[d] = { date: d, slot1: null, slot2: null };
+            grouped[d] = { date: d, slot1: [], slot2: [] };
         }
 
         const time = (item.time || item.Time || '').toString();
@@ -4572,9 +4624,11 @@ function transformCourtData(rawData) {
         });
 
         if (time.includes('18') || time.includes('19')) {
-            grouped[d].slot1 = courtInfo;
+            const exists = grouped[d].slot1.some((item) => item.line1 === courtInfo.line1 && item.line2 === courtInfo.line2 && item.color === courtInfo.color);
+            if (!exists) grouped[d].slot1.push(courtInfo);
         } else if (time.includes('20') || time.includes('21')) {
-            grouped[d].slot2 = courtInfo;
+            const exists = grouped[d].slot2.some((item) => item.line1 === courtInfo.line1 && item.line2 === courtInfo.line2 && item.color === courtInfo.color);
+            if (!exists) grouped[d].slot2.push(courtInfo);
         }
     });
 
@@ -4745,7 +4799,8 @@ function updateCourtCell(rowDate, slotKey, field, value) {
     const row = courtEditState.draftRows.find(item => item.date === rowDate);
     if (!row) return;
 
-    const currentSlot = normalizeCourtSlot(row[slotKey]) || {
+    const currentSlotSource = Array.isArray(row[slotKey]) ? row[slotKey][0] : row[slotKey];
+    const currentSlot = normalizeCourtSlot(currentSlotSource) || {
         line1: '',
         line2: '',
         color: 'none'
@@ -4755,26 +4810,86 @@ function updateCourtCell(rowDate, slotKey, field, value) {
     row[slotKey] = normalizeCourtSlot(currentSlot);
 }
 
+function updateCourtSlotEntry(rowDate, slotKey, index, field, value) {
+    if (!courtEditState.active) return;
+
+    const row = courtEditState.draftRows.find((item) => item.date === rowDate);
+    if (!row) return;
+
+    const slotList = getEditableCourtSlotList(row[slotKey]);
+    while (slotList.length <= index) {
+        slotList.push({ line1: '', line2: '', color: 'none' });
+    }
+
+    const nextEntry = normalizeCourtSlot(slotList[index]) || { line1: '', line2: '', color: 'none' };
+    nextEntry[field] = value;
+    slotList[index] = nextEntry;
+    row[slotKey] = slotList;
+}
+
+function addCourtSlotEntry(rowDate, slotKey) {
+    if (!courtEditState.active) return;
+
+    const row = courtEditState.draftRows.find((item) => item.date === rowDate);
+    if (!row) return;
+
+    const slotList = getEditableCourtSlotList(row[slotKey]);
+    slotList.push({ line1: '', line2: '', color: 'none' });
+    row[slotKey] = slotList;
+    refreshCourtTableByMonth(courtEditState.monthId);
+}
+
+function removeCourtSlotEntry(rowDate, slotKey, index) {
+    if (!courtEditState.active) return;
+
+    const row = courtEditState.draftRows.find((item) => item.date === rowDate);
+    if (!row) return;
+
+    const slotList = getEditableCourtSlotList(row[slotKey]);
+    if (index < 0 || index >= slotList.length) return;
+    slotList.splice(index, 1);
+    row[slotKey] = slotList;
+    refreshCourtTableByMonth(courtEditState.monthId);
+}
+
 function renderCourtSlotEditor(slotData, rowDate, slotKey) {
-    const normalized = normalizeCourtSlot(slotData) || { line1: '', line2: '', color: 'none' };
+    const slotList = getEditableCourtSlotList(slotData);
+    const editableSlots = slotList.length > 0 ? slotList : [{ line1: '', line2: '', color: 'none' }];
+    const editorRows = editableSlots.map((slot, index) => {
+        const normalized = normalizeCourtSlot(slot) || { line1: '', line2: '', color: 'none' };
+        return `
+            <div class="court-edit-slot-row">
+                <div class="court-edit-slot-row__header">
+                    <strong>場次 ${index + 1}</strong>
+                    <button class="court-btn court-btn--ghost court-btn--sm" type="button" onclick="removeCourtSlotEntry('${rowDate}', '${slotKey}', ${index})">刪除</button>
+                </div>
+                <div class="court-edit-field">
+                    <label>顏色</label>
+                    <select onchange="updateCourtSlotEntry('${rowDate}', '${slotKey}', ${index}, 'color', this.value)">
+                        <option value="none" ${normalized.color === 'none' ? 'selected' : ''}>無色</option>
+                        <option value="yellow" ${normalized.color === 'yellow' ? 'selected' : ''}>黃色</option>
+                        <option value="blue" ${normalized.color === 'blue' ? 'selected' : ''}>藍色</option>
+                    </select>
+                </div>
+                <div class="court-edit-field">
+                    <label>第一行</label>
+                    <input type="text" value="${escapeHtml(normalized.line1)}" placeholder="場 4, 5, 6, 7" oninput="updateCourtSlotEntry('${rowDate}', '${slotKey}', ${index}, 'line1', this.value)">
+                </div>
+                <div class="court-edit-field">
+                    <label>第二行</label>
+                    <input type="text" value="${escapeHtml(normalized.line2)}" placeholder="預約系所或紀錄" oninput="updateCourtSlotEntry('${rowDate}', '${slotKey}', ${index}, 'line2', this.value)">
+                </div>
+            </div>
+        `;
+    }).join('');
 
     return `
-        <td class="${getCourtCellClass(normalized)} court-edit-cell">
-            <div class="court-edit-field">
-                <label>顏色</label>
-                <select onchange="updateCourtCell('${rowDate}', '${slotKey}', 'color', this.value)">
-                    <option value="none" ${normalized.color === 'none' ? 'selected' : ''}>無色</option>
-                    <option value="yellow" ${normalized.color === 'yellow' ? 'selected' : ''}>黃色</option>
-                    <option value="blue" ${normalized.color === 'blue' ? 'selected' : ''}>藍色</option>
-                </select>
+        <td class="${getCourtCellClass(slotList)} court-edit-cell">
+            <div class="court-edit-slot-list">
+                ${editorRows}
             </div>
-            <div class="court-edit-field">
-                <label>第一行</label>
-                <input type="text" value="${escapeHtml(normalized.line1)}" placeholder="場 4, 5, 6, 7" oninput="updateCourtCell('${rowDate}', '${slotKey}', 'line1', this.value)">
-            </div>
-            <div class="court-edit-field">
-                <label>第二行</label>
-                <input type="text" value="${escapeHtml(normalized.line2)}" placeholder="預約系所或紀錄" oninput="updateCourtCell('${rowDate}', '${slotKey}', 'line2', this.value)">
+            <div class="court-edit-actions">
+                <button class="court-btn court-btn--ghost court-btn--sm" type="button" onclick="addCourtSlotEntry('${rowDate}', '${slotKey}')">+ 新增場</button>
             </div>
         </td>
     `;

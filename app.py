@@ -32,6 +32,7 @@ SCRAPER_SUBPROCESS_TIMEOUT_SECONDS = 90
 SUPABASE_RETRY_ATTEMPTS = 3
 SUPABASE_RETRY_DELAY_SECONDS = 0.6
 LOTTERY_ANALYSIS_VERSION_KEY = "lottery_analysis_version_v2"
+COURT_STATUS_OVERRIDE_KEY = "court_status_overrides_v1"
 LOTTERY_ANALYSIS_CACHE_PREFIX = "lottery_analysis_cache_v3"
 LOTTERY_MONTH_SUMMARY_CACHE_PREFIX = "lottery_month_summary_cache_v1"
 LOTTERY_ANALYSIS_MEMORY_CACHE = {}
@@ -572,6 +573,43 @@ def get_saved_court_status(month_id):
     return content if content not in (None, "", "[]") else None
 
 
+def get_court_status_overrides():
+    payload = get_system_data_json(COURT_STATUS_OVERRIDE_KEY, {})
+    return payload if isinstance(payload, dict) else {}
+
+
+def get_display_court_status(month_id):
+    target_month = normalize_month_id(month_id)
+    if not target_month:
+        return None
+    overrides = get_court_status_overrides()
+    override_content = overrides.get(target_month)
+    if override_content not in (None, "", "[]"):
+        return override_content
+    return get_saved_court_status(target_month)
+
+
+def set_display_court_status(month_id, content):
+    target_month = normalize_month_id(month_id)
+    if not target_month:
+        return
+    overrides = get_court_status_overrides()
+    overrides[target_month] = content
+    set_system_data_json(COURT_STATUS_OVERRIDE_KEY, overrides)
+
+
+def delete_display_court_status(month_id):
+    target_month = normalize_month_id(month_id)
+    if not target_month:
+        return False
+    overrides = get_court_status_overrides()
+    if target_month not in overrides:
+        return False
+    del overrides[target_month]
+    set_system_data_json(COURT_STATUS_OVERRIDE_KEY, overrides)
+    return True
+
+
 def get_showcase_photos():
     photos = get_system_data_json("showcase_photos", [])
     return photos if isinstance(photos, list) else []
@@ -1026,6 +1064,43 @@ def extract_court_name(value):
     return text
 
 
+def extract_court_names(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        names = []
+        for item in value:
+            names.extend(extract_court_names(item))
+        deduped = []
+        for name in names:
+            if name and name not in deduped:
+                deduped.append(name)
+        return deduped
+    if isinstance(value, dict):
+        return extract_court_names(value.get("line1") or value.get("court"))
+
+    text = str(value).strip()
+    if not text:
+        return []
+
+    matches = []
+    for court in LOTTERY_COURTS:
+        court_number = court.replace("Court ", "")
+        patterns = [
+            rf"court\s*{court_number}\b",
+            rf"volleyball\s*court\s*{court_number}\b",
+            rf"場\s*{court_number}\b",
+        ]
+        if any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in patterns):
+            matches.append(court)
+
+    if matches:
+        return matches
+
+    single_name = extract_court_name(text)
+    return [single_name] if single_name else []
+
+
 def parse_court_status_rows(content):
     raw_rows = parse_json_array(content)
     if not raw_rows:
@@ -1039,8 +1114,8 @@ def parse_court_status_rows(content):
             parsed_rows.append(
                 {
                     "date": normalize_court_date_value(row.get("date")),
-                    "slot1": extract_court_name(slot1.get("line1")),
-                    "slot2": extract_court_name(slot2.get("line1")),
+                    "slot1": extract_court_names(slot1),
+                    "slot2": extract_court_names(slot2),
                 }
             )
         return parsed_rows
@@ -1056,11 +1131,13 @@ def parse_court_status_rows(content):
         court_name = extract_court_name(item.get("court") or item.get("Court") or item.get("court_name"))
         if not court_name:
             continue
-        grouped.setdefault(date_key, {"date": date_key, "slot1": "", "slot2": ""})
+        grouped.setdefault(date_key, {"date": date_key, "slot1": [], "slot2": []})
         if "18" in time_value or "19" in time_value:
-            grouped[date_key]["slot1"] = court_name
+            if court_name not in grouped[date_key]["slot1"]:
+                grouped[date_key]["slot1"].append(court_name)
         elif "20" in time_value or "21" in time_value:
-            grouped[date_key]["slot2"] = court_name
+            if court_name not in grouped[date_key]["slot2"]:
+                grouped[date_key]["slot2"].append(court_name)
 
     return [grouped[key] for key in sorted(grouped.keys())]
 
@@ -1140,9 +1217,9 @@ def build_probability_records(month_ids):
         for row in bid_rows:
             date_key = row["date"]
             weekday = LOTTERY_WEEKDAY_NAMES[datetime.strptime(date_key, "%Y-%m-%d").weekday()]
-            court_row = get_court_map(date_key[:7]).get(date_key, {"slot1": "", "slot2": ""})
+            court_row = get_court_map(date_key[:7]).get(date_key, {"slot1": [], "slot2": []})
             for slot_key, time_label in LOTTERY_TIMES.items():
-                won_court = extract_court_name(court_row.get(slot_key))
+                won_courts = set(extract_court_names(court_row.get(slot_key)))
                 for court in LOTTERY_COURTS:
                     bids = row[slot_key].get(court, 0)
                     if bids <= 0:
@@ -1155,7 +1232,7 @@ def build_probability_records(month_ids):
                             "time": time_label,
                             "court": court,
                             "bids": bids,
-                            "wins": 1 if won_court == court else 0,
+                            "wins": 1 if court in won_courts else 0,
                         }
                     )
     return records, skipped_months
@@ -2783,6 +2860,7 @@ def get_court_status(month_id):
     if request.method == "DELETE":
         scope = (request.args.get("scope") or "all").strip().lower()
         deleted = False
+        deleted = delete_display_court_status(requested_month) or deleted
         deleted = bool(sb_delete("court_status", [("eq", "month_id", requested_month)])) or deleted
         deleted = bool(sb_delete("court_status_history", [("eq", "month_id", requested_month)])) or deleted
         if scope != "court":
@@ -2792,12 +2870,12 @@ def get_court_status(month_id):
             bump_lottery_analysis_version()
         return jsonify({"status": "success", "month_id": requested_month, "deleted": deleted, "scope": scope})
 
-    row = sb_select_one("court_status", columns="content", filters=[("eq", "month_id", requested_month)])
+    content = get_display_court_status(requested_month) or "[]"
 
     return jsonify(
         {
             "month_id": requested_month,
-            "content": row.get("content") if row else "[]",
+            "content": content,
             "is_current_month": requested_month == get_month_id(0),
             "is_next_month": requested_month == get_month_id(1),
         }
@@ -2813,9 +2891,7 @@ def save_court_status():
     if not target_month or content is None:
         return jsonify({"error": "Missing month_id or content"}), 400
 
-    sb_upsert("court_status", {"month_id": target_month, "content": content}, on_conflict="month_id")
-    archive_court_status(target_month, content, source="manual")
-    bump_lottery_analysis_version()
+    set_display_court_status(target_month, content)
 
     return jsonify({"status": "success", "month_id": target_month})
 

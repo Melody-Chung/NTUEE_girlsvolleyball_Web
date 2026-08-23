@@ -4229,6 +4229,12 @@ html, body, .app-container {
     word-break: break-word;
 }
 
+.court-slot-entry + .court-slot-entry {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.35);
+}
+
 .court-export-title {
     display: none;
 }
@@ -4237,6 +4243,49 @@ html, body, .app-container {
     min-width: 250px;
     text-align: left;
     vertical-align: top;
+}
+
+.court-edit-slot-list {
+    display: grid;
+    gap: 12px;
+}
+
+.court-edit-slot-row {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid rgba(44, 62, 80, 0.12);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.38);
+}
+
+.court-edit-slot-row__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.court-edit-slot-row__header strong {
+    font-size: 0.92rem;
+    color: #2f4354;
+}
+
+.court-edit-actions {
+    margin-top: 12px;
+}
+
+.court-btn--ghost {
+    background: #ffffff;
+    color: #486071;
+    border: 1px solid #d4dde5;
+    box-shadow: none;
+}
+
+.court-btn--sm {
+    padding: 6px 10px;
+    font-size: 0.84rem;
+    border-radius: 10px;
 }
 
 .strategy-panel-header {
