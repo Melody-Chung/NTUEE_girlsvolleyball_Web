@@ -3,6 +3,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -504,6 +505,8 @@ def start_scrape_thread(payload, target_month):
             )
 
             if scrape_succeeded:
+                # The scraper writes court_status directly, so invalidate summaries here.
+                bump_lottery_analysis_version()
                 set_scrape_status("success", "\u722c\u87f2\u5b8c\u6210\uff0c\u5df2\u66f4\u65b0\u5834\u5730\u8cc7\u6599\u3002", target_month or "")
                 return
 

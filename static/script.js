@@ -6441,6 +6441,17 @@ async function loadLotteryDashboard() {
         const response = await fetch(`/api/lottery_dashboard?${params.toString()}`, {
             signal: lotteryDashboardAbortController.signal,
         });
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.toLowerCase().includes('application/json')) {
+            const hint = response.status === 404
+                ? '找不到機率分析 API，請確認後端已部署最新版本。'
+                : [502, 503, 504].includes(response.status)
+                    ? '後端服務暫時無法使用或請求逾時，請稍後再試。'
+                    : response.status >= 500
+                        ? '後端處理機率分析時發生錯誤，請查看伺服器日誌。'
+                        : '機率分析 API 回傳格式異常，預期為 JSON，請確認服務網址與路由設定。';
+            throw new Error(`HTTP ${response.status}：${hint}`);
+        }
         const data = await response.json();
         if (!response.ok) {
             throw new Error(data?.error || `HTTP ${response.status}`);
