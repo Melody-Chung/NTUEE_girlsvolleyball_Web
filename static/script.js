@@ -5126,7 +5126,7 @@ const ACCOUNT_PLAN_WEEKDAY_KEY = 'vbt_account_plan_weekdays';
 const ACCOUNT_PLAN_MONTH_KEY = 'vbt_account_plan_month';
 const LOTTERY_COURTS = ['Court 4', 'Court 5', 'Court 6', 'Court 7'];
 const LOTTERY_WEEKDAY_NAMES = ['一', '二', '三', '四', '五', '六', '日'];
-const LOTTERY_ACCOUNT_NAMES = ['A', 'B', 'C', 'D'];
+const LOTTERY_ACCOUNT_NAMES = ['A', 'B', 'C', 'D', 'E'];
 const lotteryBidsCache = {};
 const lotteryEditState = {
     active: false,
@@ -5174,7 +5174,7 @@ function initializeStrategyPlanDrafts() {
             if (!saved || typeof saved !== 'object') continue;
             for (const pool of plan.candidate_pools || []) {
                 const tickets = saved[createStrategyPoolKey(pool)];
-                if (!Number.isInteger(tickets) || tickets < 0 || tickets > 4) continue;
+                if (!Number.isInteger(tickets) || tickets < 0 || tickets > 5) continue;
                 pool.recommended_tickets = tickets;
                 pool.recommended_win_probability = Math.round(getPoolPredictiveWinProbability(pool, tickets) * 10) / 10;
             }
@@ -5210,7 +5210,7 @@ function saveStrategyDistribution() {
 function importAccountPlanToLottery() {
     const monthId = getSelectedAccountPlanMonth();
     const rows = getStoredAccountPlanRows(monthId);
-    const assignments = buildAccountAssignmentsFromRows(rows);
+    const assignments = getAccountAssignmentPlan(monthId, rows);
     if (assignments.unassigned.length) return alert('帳號分配仍有未分配的籤，請先調整後再帶入。');
     if (!assignments.accounts.some((account) => account.ticketsUsed > 0)) {
         return alert(`${monthId} 尚無帳號投籤分配，請先完成分配。`);
@@ -5250,7 +5250,7 @@ function updateStrategyRecommendedTickets(tabKey, poolKey, value) {
     const pool = plan.candidate_pools.find((item) => createStrategyPoolKey(item) === String(poolKey));
     if (!pool) return;
 
-    const nextTickets = Math.max(0, Math.min(4, Number.parseInt(value, 10) || 0));
+    const nextTickets = Math.max(0, Math.min(5, Number.parseInt(value, 10) || 0));
     pool.recommended_tickets = nextTickets;
     pool.recommended_win_probability = Math.round(getPoolPredictiveWinProbability(pool, nextTickets) * 10) / 10;
 
@@ -5513,6 +5513,7 @@ function getStoredAccountPlanRows(monthId) {
 function saveAccountPlanRows(monthId, rows) {
     const storageKey = getAccountPlanStorageKey(monthId);
     localStorage.setItem(storageKey, JSON.stringify(rows.map(normalizeLotteryRow)));
+    localStorage.removeItem(accountAssignmentStorageKey(monthId));
 }
 
 function updateAccountPlanCell(monthId, rowDate, slotKey, court, value) {
@@ -5521,7 +5522,7 @@ function updateAccountPlanCell(monthId, rowDate, slotKey, court, value) {
     const row = rows.find((item) => item.date === normalizedDate);
     if (!row) return;
     row[slotKey] = normalizeLotterySlot(row[slotKey] || {});
-    row[slotKey][court] = Math.max(0, Math.min(4, Number.parseInt(value, 10) || 0));
+    row[slotKey][court] = Math.max(0, Math.min(5, Number.parseInt(value, 10) || 0));
     saveAccountPlanRows(monthId, rows);
     renderIndependentAccountPlanSection();
 }
@@ -5624,6 +5625,134 @@ function buildAccountAssignmentsFromRows(rows) {
     });
 
     return { accounts: accountState, unassigned };
+}
+
+function accountAssignmentStorageKey(monthId) {
+    return `vbt_account_assignments:${monthId}`;
+}
+
+function accountRowsSignature(rows) {
+    return JSON.stringify(rows.map(normalizeLotteryRow).sort((a, b) => a.date.localeCompare(b.date)));
+}
+
+function getAccountAssignmentPlan(monthId, rows) {
+    const automatic = buildAccountAssignmentsFromRows(rows);
+    try {
+        const saved = JSON.parse(localStorage.getItem(accountAssignmentStorageKey(monthId)) || 'null');
+        if (saved?.signature !== accountRowsSignature(rows)) return automatic;
+        const accounts = LOTTERY_ACCOUNT_NAMES.map((account) => {
+            const assignments = saved.accounts[account];
+            if (!Array.isArray(assignments) || assignments.length > 10
+                || new Set(assignments.map(createStrategyPoolKey)).size !== assignments.length) throw new Error('Invalid assignments');
+            return { account, assignments, ticketsUsed: assignments.length };
+        });
+        const keys = (list) => list.flatMap((account) => account.assignments.map(createStrategyPoolKey)).sort().join('\n');
+        if (keys(accounts) !== keys(automatic.accounts)) return automatic;
+        return { accounts, unassigned: automatic.unassigned };
+    } catch (error) {
+        return automatic;
+    }
+}
+
+function moveAccountTicket(monthId, sourceName, sourceIndex, targetName, targetIndex = null) {
+    const rows = getStoredAccountPlanRows(monthId);
+    const plan = getAccountAssignmentPlan(monthId, rows);
+    const source = plan.accounts.find((account) => account.account === sourceName);
+    const target = plan.accounts.find((account) => account.account === targetName);
+    if (!source || !target || source === target || !Number.isInteger(sourceIndex)) return false;
+    const ticket = source.assignments[sourceIndex];
+    if (!ticket) return false;
+    const swap = targetIndex !== null;
+    const other = swap && Number.isInteger(targetIndex) ? target.assignments[targetIndex] : null;
+    if (swap && !other) return false;
+    if (!swap && target.assignments.length >= 10) {
+        alert('此帳號已滿 10 張，請拖到其中一張籤上交換。');
+        return false;
+    }
+    const duplicate = (items, item, excluded) => items.some((entry, index) => index !== excluded && createStrategyPoolKey(entry) === createStrategyPoolKey(item));
+    if (duplicate(target.assignments, ticket, swap ? targetIndex : -1)
+        || (swap && duplicate(source.assignments, other, sourceIndex))) {
+        alert('同一帳號不能重複投同日期、時段及場地。');
+        return false;
+    }
+    if (swap) {
+        source.assignments[sourceIndex] = other;
+        target.assignments[targetIndex] = ticket;
+    } else {
+        source.assignments.splice(sourceIndex, 1);
+        target.assignments.push(ticket);
+    }
+    try {
+        localStorage.setItem(accountAssignmentStorageKey(monthId), JSON.stringify({
+            signature: accountRowsSignature(rows),
+            accounts: Object.fromEntries(plan.accounts.map((account) => [account.account, account.assignments])),
+        }));
+    } catch (error) {
+        alert('儲存失敗，請確認瀏覽器允許儲存資料。');
+        return false;
+    }
+    renderIndependentAccountPlanSection();
+    return true;
+}
+
+function bindAccountAssignmentDrag(container, monthId) {
+    let picked = null;
+    const clear = () => {
+        picked = null;
+        container.querySelectorAll('.is-ticket-selected, .is-ticket-target').forEach((node) => node.classList.remove('is-ticket-selected', 'is-ticket-target'));
+    };
+    const pick = (card) => {
+        clear();
+        picked = { account: card.dataset.account, index: Number(card.dataset.ticketIndex) };
+        card.classList.add('is-ticket-selected');
+    };
+    const drop = (zone, card) => {
+        if (!picked) return;
+        moveAccountTicket(monthId, picked.account, picked.index, zone.dataset.dropAccount,
+            card ? Number(card.dataset.ticketIndex) : null);
+        clear();
+    };
+    container.querySelectorAll('[data-ticket-index]').forEach((card) => {
+        card.addEventListener('dragstart', (event) => {
+            pick(card);
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', card.getAttribute('aria-label'));
+        });
+        card.addEventListener('dragend', clear);
+    });
+    container.querySelectorAll('[data-drop-account]').forEach((zone) => {
+        zone.tabIndex = 0;
+        zone.setAttribute('aria-label', `帳號 ${zone.dataset.dropAccount}：放入選取的籤`);
+        zone.addEventListener('dragover', (event) => {
+            if (!picked) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+            container.querySelectorAll('.is-ticket-target').forEach((node) => node.classList.remove('is-ticket-target'));
+            (event.target.closest('[data-ticket-index]') || zone).classList.add('is-ticket-target');
+        });
+        zone.addEventListener('dragleave', (event) => {
+            if (!zone.contains(event.relatedTarget)) zone.querySelectorAll('.is-ticket-target').forEach((node) => node.classList.remove('is-ticket-target'));
+            zone.classList.remove('is-ticket-target');
+        });
+        zone.addEventListener('drop', (event) => {
+            if (!picked) return;
+            event.preventDefault();
+            drop(zone, event.target.closest('[data-ticket-index]'));
+        });
+        const activate = (event) => {
+            const card = event.target.closest('[data-ticket-index]');
+            if (picked) drop(zone, card);
+            else if (card) pick(card);
+        };
+        zone.addEventListener('click', activate);
+        zone.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') clear();
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                activate(event);
+            }
+        });
+    });
 }
 
 function toggleAccountPlanWeekday(value) {
@@ -5981,7 +6110,7 @@ function initProbabilityControls() {
     if (startInput) startInput.value = savedStartMonth || currentMonthId;
     if (endInput) endInput.value = savedEndMonth || currentMonthId;
     if (picker) picker.value = currentMonthId;
-    if (ticketBudgetInput) ticketBudgetInput.value = Math.min(Number(savedTicketBudget || 40), 40);
+    if (ticketBudgetInput) ticketBudgetInput.value = Math.min(Number(savedTicketBudget || 50), 50);
     if (weightRatioInput) weightRatioInput.value = savedWeightRatio || '1.3';
 }
 
@@ -6124,13 +6253,13 @@ function renderStrategyMetricChip(label, value, modifier) {
 }
 
 function renderStrategyRecommendedEditor(pool, tabKey) {
-    const selectedValue = Math.max(0, Math.min(4, Number.parseInt(pool?.recommended_tickets || 0, 10) || 0));
+    const selectedValue = Math.max(0, Math.min(5, Number.parseInt(pool?.recommended_tickets || 0, 10) || 0));
     const poolKey = createStrategyPoolKey(pool);
     return `
         <span class="strategy-metric-chip strategy-metric-chip--recommended strategy-metric-chip--editable">
             <strong>Rec</strong>
             <select class="strategy-rec-select" onchange="updateStrategyRecommendedTickets('${escapeHtml(tabKey)}', '${escapeHtml(poolKey)}', this.value)">
-                ${[0, 1, 2, 3, 4].map((value) => `<option value="${value}" ${selectedValue === value ? 'selected' : ''}>${value}</option>`).join('')}
+                ${[0, 1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${selectedValue === value ? 'selected' : ''}>${value}</option>`).join('')}
             </select>
         </span>
     `;
@@ -6325,7 +6454,7 @@ function renderAccountPlanEditorTable(monthId, rows) {
                         <div class="lottery-edit-row">
                             <label>${court.replace('Court ', '場 ')}</label>
                             <select onchange="updateAccountPlanCell('${monthId}', '${row.date}', '${slotKey}', '${court}', this.value)">
-                                ${[0, 1, 2, 3, 4].map((value) => `<option value="${value}" ${slot[court] === value ? 'selected' : ''}>${value}</option>`).join('')}
+                                ${[0, 1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${slot[court] === value ? 'selected' : ''}>${value}</option>`).join('')}
                             </select>
                         </div>
                     `).join('')}
@@ -6345,7 +6474,7 @@ function renderIndependentAccountPlanSection() {
     const selectedWeekdays = getSelectedAccountPlanWeekdays();
     const rows = getStoredAccountPlanRows(monthId);
     const visibleRows = buildAccountPlanRowsWithWeekdays(monthId, rows, selectedWeekdays);
-    const assignmentPlan = buildAccountAssignmentsFromRows(rows);
+    const assignmentPlan = getAccountAssignmentPlan(monthId, rows);
     const totalTickets = rows.reduce((sum, row) => {
         const normalized = normalizeLotteryRow(row);
         return sum
@@ -6382,13 +6511,14 @@ function renderIndependentAccountPlanSection() {
         </div>
         <div class="strategy-note">獨立投籤草稿 ｜ 目標月份：${escapeHtml(monthId)} ｜ 目前總籤數：<strong>${totalTickets}</strong></div>
         ${renderAccountPlanEditorTable(monthId, visibleRows)}
+        <p class="strategy-note">A～E 每個帳號最多 10 張。拖到其他帳號的空白處可移轉，拖到另一張籤上可交換；也可點選籤再點選目的地（鍵盤 Enter／空白鍵選取，Esc 取消）。調整會自動儲存於此瀏覽器。修改上方籤數或帶入新的策略後會重新分配。</p>
     `;
 
     html += '<div class="court-dashboard-container"><div class="probability-matrix"><table class="court-table probability-table account-plan-table"><thead><tr><th>帳號</th><th>已用</th><th>投籤位置</th></tr></thead><tbody>';
     assignmentPlan.accounts.forEach((account) => {
         const assignments = account.assignments.length > 0
-            ? `<div class="account-assignment-list">${account.assignments.map((item) => `
-                <div class="account-assignment-item account-assignment-item--${escapeHtml(item.court.toLowerCase().replace(/\s+/g, '-'))}">
+            ? `<div class="account-assignment-list">${account.assignments.map((item, index) => `
+                <div draggable="true" tabindex="0" data-account="${account.account}" data-ticket-index="${index}" aria-label="${escapeHtml(`${account.account}: ${item.date} ${item.time} ${item.court}`)}" class="account-assignment-item account-assignment-item--${escapeHtml(item.court.toLowerCase().replace(/\s+/g, '-'))}">
                     <div class="account-assignment-main">
                         <span class="account-assignment-date">${escapeHtml(item.date)} (${escapeHtml(item.weekday)})</span>
                         <span class="account-assignment-time">${escapeHtml(item.time)}</span>
@@ -6401,7 +6531,7 @@ function renderIndependentAccountPlanSection() {
             <tr>
                 <td class="account-plan-table__account"><span class="account-plan-account-name">${escapeHtml(account.account)}</span></td>
                 <td class="account-plan-table__usage"><span class="account-plan-usage-pill">${account.ticketsUsed} / 10</span></td>
-                <td class="account-plan-table__assignments">${assignments}</td>
+                <td class="account-plan-table__assignments" data-drop-account="${account.account}">${assignments}</td>
             </tr>
         `;
     });
@@ -6418,6 +6548,7 @@ function renderIndependentAccountPlanSection() {
     container.innerHTML = html;
     applyTextInputFallback('account-plan-month-picker', 'month');
     syncCustomCheckboxState(container);
+    bindAccountAssignmentDrag(container, monthId);
 }
 
 function refreshLotteryDashboard(trigger) {
@@ -6440,8 +6571,8 @@ function getStrategyWeights() {
 
 function getStrategyTicketBudget() {
     const input = document.getElementById('strategy-ticket-budget');
-    const budget = Number.parseInt(input ? input.value : '40', 10);
-    return Number.isFinite(budget) && budget >= 0 ? Math.min(budget, 40) : 40;
+    const budget = Number.parseInt(input ? input.value : '50', 10);
+    return Number.isFinite(budget) && budget >= 0 ? Math.min(budget, 50) : 50;
 }
 
 async function loadLotteryDashboard() {

@@ -805,7 +805,7 @@ def sort_sections_by_saved_order(sections, order):
 LOTTERY_COURTS = ["Court 4", "Court 5", "Court 6", "Court 7"]
 LOTTERY_TIMES = {"slot1": "18:00-20:00", "slot2": "20:00-22:00"}
 LOTTERY_WEEKDAY_NAMES = ["一", "二", "三", "四", "五", "六", "日"]
-LOTTERY_ACCOUNT_NAMES = ["A", "B", "C", "D"]
+LOTTERY_ACCOUNT_NAMES = ["A", "B", "C", "D", "E"]
 MENU_COMPLEXITY_DEFAULTS = ["basic", "standard"]
 MENU_DIFFICULTY_DEFAULTS = ["beginner", "advanced"]
 MENU_COMPLEXITY_ORDER = {"basic": 0, "standard": 1}
@@ -2289,7 +2289,7 @@ def build_strategy_explanation(candidate_pools, recommended_allocation, second_b
     return explanation
 
 
-def build_strategy_plan(target_month, probability_summary, weekdays=None, include_dates=None, exclude_dates=None, courts=None, total_tickets=40, top_n=5, time_weights=None):
+def build_strategy_plan(target_month, probability_summary, weekdays=None, include_dates=None, exclude_dates=None, courts=None, total_tickets=50, top_n=5, time_weights=None):
     candidate_pools = build_candidate_pools(
         target_month,
         probability_summary,
@@ -2298,7 +2298,7 @@ def build_strategy_plan(target_month, probability_summary, weekdays=None, includ
         exclude_dates=exclude_dates,
         courts=courts,
     )
-    optimization = optimize_pool_allocations(candidate_pools, total_tickets=total_tickets, top_n=top_n, per_pool_cap=4, time_weights=time_weights)
+    optimization = optimize_pool_allocations(candidate_pools, total_tickets=total_tickets, top_n=top_n, per_pool_cap=5, time_weights=time_weights)
     recommended = optimization["recommended_allocation"]
     alternatives = optimization["alternatives"]
     second_best = alternatives[1] if len(alternatives) > 1 else None
@@ -2317,7 +2317,7 @@ def build_strategy_plan(target_month, probability_summary, weekdays=None, includ
 
     return {
         "available_tickets": total_tickets,
-        "per_pool_cap": 4,
+        "per_pool_cap": 5,
         "candidate_pools": candidate_rows,
         "recommended_allocation": recommended,
         "alternatives": alternatives,
@@ -2958,10 +2958,10 @@ def get_lottery_dashboard():
     strategy_include_dates = [value for value in strategy_include_dates if value]
     strategy_exclude_dates = [value for value in strategy_exclude_dates if value]
     try:
-        strategy_ticket_budget = int(request.args.get("strategy_ticket_budget", 40))
+        strategy_ticket_budget = int(request.args.get("strategy_ticket_budget", 50))
     except (TypeError, ValueError):
-        strategy_ticket_budget = 40
-    strategy_ticket_budget = min(max(strategy_ticket_budget, 0), 40)
+        strategy_ticket_budget = 50
+    strategy_ticket_budget = min(max(strategy_ticket_budget, 0), 50)
     try:
         late_ratio = float(request.args.get("strategy_weight_ratio", 1.3))
     except (TypeError, ValueError):

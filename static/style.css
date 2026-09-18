@@ -4728,6 +4728,31 @@ html, body, .app-container {
     box-shadow: 0 6px 16px rgba(52, 73, 94, 0.06);
 }
 
+.account-assignment-item[draggable="true"] {
+    cursor: grab;
+    user-select: none;
+}
+
+.account-assignment-item[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+.account-plan-table [data-drop-account] {
+    min-height: 80px;
+    padding-bottom: 28px;
+}
+
+.account-plan-table .is-ticket-selected {
+    outline: 2px solid var(--primary-color);
+    opacity: 0.65;
+}
+
+.account-plan-table .is-ticket-target,
+.account-plan-table [tabindex]:focus-visible {
+    outline: 3px dashed var(--accent-color);
+    outline-offset: -3px;
+}
+
 .account-assignment-main {
     display: grid;
     gap: 4px;
