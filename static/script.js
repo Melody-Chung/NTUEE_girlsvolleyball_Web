@@ -5126,7 +5126,7 @@ const ACCOUNT_PLAN_WEEKDAY_KEY = 'vbt_account_plan_weekdays';
 const ACCOUNT_PLAN_MONTH_KEY = 'vbt_account_plan_month';
 const LOTTERY_COURTS = ['Court 4', 'Court 5', 'Court 6', 'Court 7'];
 const LOTTERY_WEEKDAY_NAMES = ['一', '二', '三', '四', '五', '六', '日'];
-const LOTTERY_ACCOUNT_NAMES = ['A', 'B', 'C', 'D', 'E'];
+const LOTTERY_ACCOUNT_NAMES = ['A', 'B', 'C', 'D'];
 const lotteryBidsCache = {};
 const lotteryEditState = {
     active: false,
@@ -5166,6 +5166,66 @@ function getPoolPredictiveWinProbability(pool, tickets) {
 function initializeStrategyPlanDrafts() {
     strategyPlanDrafts.selected = cloneJson(latestLotteryDashboardData?.strategy?.selected);
     strategyPlanDrafts.all = cloneJson(latestLotteryDashboardData?.strategy?.all_time);
+    for (const tab of ['selected', 'all']) {
+        const plan = getStrategyPlanDraft(tab);
+        if (!plan) continue;
+        try {
+            const saved = JSON.parse(localStorage.getItem(getStrategyDistributionKey(tab)) || 'null');
+            if (!saved || typeof saved !== 'object') continue;
+            for (const pool of plan.candidate_pools || []) {
+                const tickets = saved[createStrategyPoolKey(pool)];
+                if (!Number.isInteger(tickets) || tickets < 0 || tickets > 4) continue;
+                pool.recommended_tickets = tickets;
+                pool.recommended_win_probability = Math.round(getPoolPredictiveWinProbability(pool, tickets) * 10) / 10;
+            }
+        } catch (error) {
+            console.warn('無法讀取已儲存的策略分布', error);
+        }
+    }
+}
+
+function getStrategyDistributionKey(tabKey = activeStrategyTab) {
+    const tab = getStrategyDraftKey(tabKey);
+    const plan = getStrategyPlanDraft(tab);
+    const context = [latestLotteryDashboardData?.strategy?.target_month, tab,
+        plan?.available_tickets, (plan?.candidate_pools || []).map(createStrategyPoolKey).sort()];
+    return `vbt_strategy_distribution:${JSON.stringify(context)}`;
+}
+
+function saveStrategyDistribution() {
+    const plan = getStrategyPlanDraft();
+    if (!plan?.candidate_pools?.length) return alert('目前沒有可儲存的策略分布。');
+    const summary = getStrategyManualAllocationSummary(plan.candidate_pools);
+    if (summary.isOverBudget) return alert('分配張數超過可用投籤數，請先調整。');
+    try {
+        localStorage.setItem(getStrategyDistributionKey(), JSON.stringify(Object.fromEntries(
+            plan.candidate_pools.map((pool) => [createStrategyPoolKey(pool), pool.recommended_tickets || 0])
+        )));
+        alert('已儲存分布至此瀏覽器，相同月份與篩選條件會自動還原。');
+    } catch (error) {
+        alert('儲存失敗，請確認瀏覽器允許儲存資料。');
+    }
+}
+
+function importAccountPlanToLottery() {
+    const monthId = getSelectedAccountPlanMonth();
+    const rows = getStoredAccountPlanRows(monthId);
+    const assignments = buildAccountAssignmentsFromRows(rows);
+    if (assignments.unassigned.length) return alert('帳號分配仍有未分配的籤，請先調整後再帶入。');
+    if (!assignments.accounts.some((account) => account.ticketsUsed > 0)) {
+        return alert(`${monthId} 尚無帳號投籤分配，請先完成分配。`);
+    }
+    if (lotteryEditState.active && !confirm('帶入將取代目前尚未儲存的編輯內容，是否繼續？')) return;
+    lotterySelectedMonthId = monthId;
+    lotteryEditState.active = true;
+    lotteryEditState.monthId = monthId;
+    lotteryEditState.draftRows = cloneLotteryRows(rows);
+    const picker = document.getElementById('lottery-month-picker');
+    if (picker) picker.value = monthId;
+    updateLotteryMonthLabels();
+    switchLotteryTab('selected');
+    refreshLotteryTableByMonth(monthId);
+    alert(`已帶入 ${monthId} 的帳號分配，請確認後按「儲存投籤」。`);
 }
 
 function getStrategyPlanDraft(tabKey = activeStrategyTab) {
@@ -5190,7 +5250,7 @@ function updateStrategyRecommendedTickets(tabKey, poolKey, value) {
     const pool = plan.candidate_pools.find((item) => createStrategyPoolKey(item) === String(poolKey));
     if (!pool) return;
 
-    const nextTickets = Math.max(0, Math.min(5, Number.parseInt(value, 10) || 0));
+    const nextTickets = Math.max(0, Math.min(4, Number.parseInt(value, 10) || 0));
     pool.recommended_tickets = nextTickets;
     pool.recommended_win_probability = Math.round(getPoolPredictiveWinProbability(pool, nextTickets) * 10) / 10;
 
@@ -5252,11 +5312,11 @@ function getStoredCheckboxValues(selector, storageKey, defaultValues, valueGette
 }
 
 function getDefaultLotteryWeekdays() {
-    return [0, 1, 2, 3, 4, 5, 6];
+    return [0, 4];
 }
 
 function getDefaultStrategyWeekdays() {
-    return [0, 1, 2, 3, 4, 5, 6];
+    return [0, 4];
 }
 
 function getSelectedLotteryWeekdays() {
@@ -5461,7 +5521,7 @@ function updateAccountPlanCell(monthId, rowDate, slotKey, court, value) {
     const row = rows.find((item) => item.date === normalizedDate);
     if (!row) return;
     row[slotKey] = normalizeLotterySlot(row[slotKey] || {});
-    row[slotKey][court] = Math.max(0, Math.min(5, Number.parseInt(value, 10) || 0));
+    row[slotKey][court] = Math.max(0, Math.min(4, Number.parseInt(value, 10) || 0));
     saveAccountPlanRows(monthId, rows);
     renderIndependentAccountPlanSection();
 }
@@ -5921,7 +5981,7 @@ function initProbabilityControls() {
     if (startInput) startInput.value = savedStartMonth || currentMonthId;
     if (endInput) endInput.value = savedEndMonth || currentMonthId;
     if (picker) picker.value = currentMonthId;
-    if (ticketBudgetInput) ticketBudgetInput.value = savedTicketBudget || '50';
+    if (ticketBudgetInput) ticketBudgetInput.value = Math.min(Number(savedTicketBudget || 40), 40);
     if (weightRatioInput) weightRatioInput.value = savedWeightRatio || '1.3';
 }
 
@@ -6064,13 +6124,13 @@ function renderStrategyMetricChip(label, value, modifier) {
 }
 
 function renderStrategyRecommendedEditor(pool, tabKey) {
-    const selectedValue = Math.max(0, Math.min(5, Number.parseInt(pool?.recommended_tickets || 0, 10) || 0));
+    const selectedValue = Math.max(0, Math.min(4, Number.parseInt(pool?.recommended_tickets || 0, 10) || 0));
     const poolKey = createStrategyPoolKey(pool);
     return `
         <span class="strategy-metric-chip strategy-metric-chip--recommended strategy-metric-chip--editable">
             <strong>Rec</strong>
             <select class="strategy-rec-select" onchange="updateStrategyRecommendedTickets('${escapeHtml(tabKey)}', '${escapeHtml(poolKey)}', this.value)">
-                ${[0, 1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${selectedValue === value ? 'selected' : ''}>${value}</option>`).join('')}
+                ${[0, 1, 2, 3, 4].map((value) => `<option value="${value}" ${selectedValue === value ? 'selected' : ''}>${value}</option>`).join('')}
             </select>
         </span>
     `;
@@ -6265,7 +6325,7 @@ function renderAccountPlanEditorTable(monthId, rows) {
                         <div class="lottery-edit-row">
                             <label>${court.replace('Court ', '場 ')}</label>
                             <select onchange="updateAccountPlanCell('${monthId}', '${row.date}', '${slotKey}', '${court}', this.value)">
-                                ${[0, 1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${slot[court] === value ? 'selected' : ''}>${value}</option>`).join('')}
+                                ${[0, 1, 2, 3, 4].map((value) => `<option value="${value}" ${slot[court] === value ? 'selected' : ''}>${value}</option>`).join('')}
                             </select>
                         </div>
                     `).join('')}
@@ -6380,8 +6440,8 @@ function getStrategyWeights() {
 
 function getStrategyTicketBudget() {
     const input = document.getElementById('strategy-ticket-budget');
-    const budget = Number.parseInt(input ? input.value : '50', 10);
-    return Number.isFinite(budget) && budget >= 0 ? budget : 50;
+    const budget = Number.parseInt(input ? input.value : '40', 10);
+    return Number.isFinite(budget) && budget >= 0 ? Math.min(budget, 40) : 40;
 }
 
 async function loadLotteryDashboard() {

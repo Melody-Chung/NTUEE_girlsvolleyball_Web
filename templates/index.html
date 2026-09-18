@@ -266,12 +266,12 @@
                             <div class="court-weekday-filter" id="lottery-weekday-filter">
                                 <span class="court-weekday-filter__label">星期</span>
                                 <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="0" checked> 一</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="1" checked> 二</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="2" checked> 三</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="3" checked> 四</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="1"> 二</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="2"> 三</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="3"> 四</label>
                                 <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="4" checked> 五</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="5" checked> 六</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="6" checked> 日</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="5"> 六</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-lottery-weekday="6"> 日</label>
                             </div>
                             <div class="strategy-month-controls">
                                 <label>
@@ -279,6 +279,7 @@
                                     <input type="month" id="lottery-month-picker" placeholder="YYYY-MM" inputmode="numeric">
                                 </label>
                                 <button class="court-btn" onclick="loadSelectedLotteryMonth(this)">載入月份</button>
+                                <button class="court-btn" onclick="importAccountPlanToLottery()">一鍵帶入帳號投籤分配</button>
                                 <button class="court-btn" id="lottery-edit-btn" onclick="toggleLotteryEditMode()">
                                     <i class="fas fa-edit"></i> 編輯投籤
                                 </button>
@@ -324,12 +325,12 @@
                             <div class="court-weekday-filter" id="probability-weekday-filter">
                                 <span class="court-weekday-filter__label">星期</span>
                                 <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="0" checked> 一</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="1" checked> 二</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="2" checked> 三</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="3" checked> 四</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="1"> 二</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="2"> 三</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="3"> 四</label>
                                 <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="4" checked> 五</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="5" checked> 六</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="6" checked> 日</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="5"> 六</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-probability-weekday="6"> 日</label>
                             </div>
                             <div class="strategy-range-controls">
                                 <label>
@@ -377,12 +378,12 @@
                             <div class="court-weekday-filter" id="strategy-weekday-filter">
                                 <span class="court-weekday-filter__label">星期</span>
                                 <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="0" checked> 一</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="1" checked> 二</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="2" checked> 三</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="3" checked> 四</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="1"> 二</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="2"> 三</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="3"> 四</label>
                                 <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="4" checked> 五</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="5" checked> 六</label>
-                                <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="6" checked> 日</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="5"> 六</label>
+                                <label class="court-weekday-option"><input type="checkbox" data-strategy-weekday="6"> 日</label>
                             </div>
                             <div class="strategy-weight-controls">
                                 <label>
@@ -394,9 +395,10 @@
                                 </label>
                                 <label>
                                     <span>Available tickets</span>
-                                    <input type="number" id="strategy-ticket-budget" min="0" max="50" step="1" value="50">
+                                    <input type="number" id="strategy-ticket-budget" min="0" max="40" step="1" value="40">
                                 </label>
                                 <button class="court-btn" onclick="refreshStrategyPanel(this)">重新分析</button>
+                                <button class="court-btn" onclick="saveStrategyDistribution()">儲存分布</button>
                                 <button class="court-btn" onclick="downloadStrategyTableAsPng()">下載 PNG</button>
                             </div>
                         </div>
